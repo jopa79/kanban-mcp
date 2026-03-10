@@ -5,6 +5,7 @@ Terminal-basiertes Kanban Board mit MCP-Server fuer Claude Code.
 - **CLI** — Alle Board-Operationen direkt im Terminal
 - **TUI** — Interaktive Board-Ansicht mit Tastatur-Navigation
 - **MCP Server** — 16 Tools fuer Claude Code Integration
+- **Skills** — Automatisierte Review-Tests (Playwright + VHS)
 - **SQLite** — Pro-Projekt Datenbank in `.kanban/`
 
 ## Screenshot
@@ -110,6 +111,29 @@ Als Claude Code MCP Server registrieren (`~/.claude/settings.json`):
 | `kanban_export_board` | Board als JSON exportieren |
 | `kanban_import_board` | Board aus JSON importieren |
 
+## Skills
+
+Im Ordner `skills/` liegen Claude Code Skills die auf dem Kanban MCP aufbauen.
+
+### kanban-review-tester
+
+Testet automatisch alle Kanban-Tasks im Status "Review". Erkennt pro Task ob ein Browser-Test (Playwright) oder Terminal-Test (VHS) noetig ist.
+
+**Features:**
+- Automatische Test-Typ-Erkennung anhand von Task-Titel, Notes und Labels
+- Browser-Tests via Playwright MCP (UI, Console, Netzwerk)
+- Terminal-Tests via VHS + Bash (CLI-Befehle, Builds, Migrations)
+- Ergebnisse werden direkt in die Task-Notes geschrieben
+
+**Einrichten:**
+
+```bash
+# Symlink in Claude Code Skills-Ordner
+ln -s /pfad/zu/kanban-mcp/skills/kanban-review-tester ~/.claude/skills/kanban-review-tester
+```
+
+**Ausfuehren:** "teste die Reviews" oder "review testen" zu Claude sagen.
+
 ## Tests
 
 ```bash
@@ -120,6 +144,9 @@ bun test
 
 ```
 kanban-mcp/
+  skills/
+    kanban-review-tester/
+      SKILL.md              # Review-Test Skill fuer Claude Code
   src/
     index.ts              # CLI Entry Point
     core/
