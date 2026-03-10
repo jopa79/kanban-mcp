@@ -1,0 +1,28 @@
+{
+  "name": "kanban-mcp",
+  "version": "0.1.0",
+  "description": "Terminal Kanban Board mit MCP-Server fuer Claude Code",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun --external react-devtools-core",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "commander": "^14.0.3",
+    "ink": "^6.8.0",
+    "ink-text-input": "^6.0.0",
+    "nanoid": "^5.1.6",
+    "react": "^19.2.4"
+  }
+}
