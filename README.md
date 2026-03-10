@@ -7,6 +7,10 @@ Terminal-basiertes Kanban Board mit MCP-Server fuer Claude Code.
 - **MCP Server** — 16 Tools fuer Claude Code Integration
 - **SQLite** — Pro-Projekt Datenbank in `.kanban/`
 
+## Screenshot
+
+![Kanban TUI](docs/tui-screenshot.png)
+
 ## Setup
 
 ```bash
