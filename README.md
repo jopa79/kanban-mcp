@@ -8,9 +8,11 @@ Terminal-basiertes Kanban Board mit MCP-Server fuer Claude Code.
 - **Skills** — Automatisierte Review-Tests (Playwright + VHS)
 - **SQLite** — Pro-Projekt Datenbank in `.kanban/`
 
-## Screenshot
+## Screenshots
 
 ![Kanban TUI](docs/tui-screenshot.png)
+
+![Task Detail-Ansicht](docs/tui-detail.png)
 
 ## Setup
 

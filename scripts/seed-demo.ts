@@ -77,12 +77,12 @@ taskService.addTask({
 // --- In Progress Tasks ---
 const exportTask = taskService.addTask({
   title: "MCP Export/Import",
-  description: "Board als ZIP exportieren",
+  description: "Board als ZIP exportieren und aus ZIP wiederherstellen",
   columnId: "in-progress",
   labels: ["feature"],
   assignedTo: "jopa",
   createdBy: "claude",
-  notes: "## Status\n- [x] Export Service\n- [x] Import Service\n- [ ] MCP Tools registrieren\n- [ ] CLI Commands",
+  notes: "## Status\n- [x] Export Service\n- [x] Import Service\n- [ ] MCP Tools registrieren\n- [ ] CLI Commands\n\n## Architektur\nExport erzeugt ein ZIP mit board.db + notes/.\nImport erkennt ob bereits ein Board existiert\nund fragt ggf. nach Ueberschreiben.\n\n## Offene Fragen\n- Sollen Labels beim Import gemergt werden?\n- Max. ZIP-Groesse begrenzen?",
 });
 
 taskService.addTask({
