@@ -2,7 +2,7 @@
 
 // Spaltenfarben — klar unterscheidbar im Terminal
 export const COLUMN_COLORS: Record<string, string> = {
-  backlog: "#6b7280",       // gedaempftes Grau
+  backlog: "#e2e8f0",       // helles Weiss
   todo: "#f59e0b",          // Amber/Orange
   "in-progress": "#3b82f6", // kraeftiges Blau
   review: "#a855f7",        // Lila
