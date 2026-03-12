@@ -2,7 +2,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { Task } from "../core/types.ts";
-import { ACCENT, getTagColor } from "./theme.ts";
+import { ACCENT, getTagColor, dimHexColor } from "./theme.ts";
 
 interface TaskCardProps {
   task: Task;
@@ -15,12 +15,15 @@ export function TaskCard({ task, isSelected, isMoving, columnColor }: TaskCardPr
   // Verschiebe-Modus: gelber Rahmen als visuelles Feedback
   const borderColor = isMoving ? "#f59e0b" : isSelected ? "#ffffff" : columnColor;
   const borderStyle = isSelected || isMoving ? "bold" : "round";
+  // Spaltenfarbe als dezenter Hintergrund (~15% Helligkeit)
+  const bgColor = dimHexColor(isMoving ? "#f59e0b" : columnColor, 0.30);
 
   return (
     <Box
       flexDirection="column"
       borderStyle={borderStyle}
       borderColor={borderColor}
+      backgroundColor={bgColor}
       paddingX={1}
       width="100%"
     >

@@ -43,6 +43,14 @@ export const TAGS: TagDef[] = [
   { name: "help-wanted",  color: "#10b981" }, // Smaragd
 ];
 
+// Hex-Farbe abdunkeln (factor 0-1, 0=schwarz, 1=original)
+export function dimHexColor(hex: string, factor: number): string {
+  const r = Math.round(parseInt(hex.slice(1, 3), 16) * factor);
+  const g = Math.round(parseInt(hex.slice(3, 5), 16) * factor);
+  const b = Math.round(parseInt(hex.slice(5, 7), 16) * factor);
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
 // Farbe eines Tags nachschlagen
 export function getTagColor(tagName: string): string {
   return TAGS.find(t => t.name === tagName)?.color ?? DEFAULT_COLUMN_COLOR;
