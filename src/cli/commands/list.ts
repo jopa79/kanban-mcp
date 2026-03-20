@@ -8,6 +8,7 @@ export const listCommand = new Command("list")
   .description("Tasks auflisten")
   .option("-c, --column <column>", "Nach Spalte filtern")
   .option("-a, --assignee <name>", "Nach Assignee filtern")
+  .option("--json", "Ausgabe als JSON")
   .action((options) => {
     const { taskService, boardService } = getContext();
 
@@ -15,6 +16,12 @@ export const listCommand = new Command("list")
       columnId: options.column,
       assignedTo: options.assignee,
     });
+
+    // JSON-Ausgabe: Array direkt ausgeben
+    if (options.json) {
+      console.log(JSON.stringify(tasks));
+      return;
+    }
 
     if (tasks.length === 0) {
       console.log("Keine Tasks gefunden.");

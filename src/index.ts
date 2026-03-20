@@ -12,6 +12,7 @@ import { mcpCommand } from "./cli/commands/mcp.ts";
 import { tuiCommand } from "./cli/commands/tui.ts";
 import { syncCommand } from "./cli/commands/sync.ts";
 import { archiveCommand, restoreCommand, purgeCommand } from "./cli/commands/archive.ts";
+import { getCommand } from "./cli/commands/get.ts";
 import { noteCommand } from "./cli/commands/note.ts";
 import { exportCommand } from "./cli/commands/export.ts";
 import { importCommand } from "./cli/commands/import.ts";
@@ -27,6 +28,7 @@ program
 program.addCommand(initCommand);
 program.addCommand(addCommand);
 program.addCommand(listCommand);
+program.addCommand(getCommand);
 program.addCommand(moveCommand);
 program.addCommand(doneCommand);
 program.addCommand(statusCommand);
