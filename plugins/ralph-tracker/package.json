@@ -1,0 +1,14 @@
+{
+  "name": "kanban-mcp-tracker",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Kanban MCP Tracker Plugin fuer Ralph TUI",
+  "main": "src/tracker.ts",
+  "scripts": {
+    "build": "bun build src/tracker.ts --outdir dist --target bun",
+    "deploy": "bun run scripts/deploy.ts",
+    "test": "bun test"
+  },
+  "author": "JoPa",
+  "license": "MIT"
+}
