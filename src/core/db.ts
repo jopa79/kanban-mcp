@@ -19,6 +19,7 @@ const DEFAULT_COLUMNS = [
 export function openDb(dbPath: string): Database {
   const db = new Database(dbPath);
   db.run("PRAGMA journal_mode = WAL");
+  db.run("PRAGMA busy_timeout = 5000");
   db.run("PRAGMA foreign_keys = ON");
   migrateDb(db);
   return db;
