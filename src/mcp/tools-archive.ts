@@ -1,7 +1,7 @@
 // MCP Tools fuer Archiv-Management
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
-import { getContext } from "./mcp-context.ts";
+import { withContext } from "./mcp-context.ts";
 
 export function registerArchiveTools(server: McpServer, workingDir: string): void {
   // --- kanban_archive_tasks ---
@@ -18,10 +18,11 @@ export function registerArchiveTools(server: McpServer, workingDir: string): voi
     },
     async ({ columnId, olderThanDays, dryRun }) => {
       try {
-        const { taskService } = getContext(workingDir);
-        const result = taskService.archiveTasks({ columnId, olderThanDays, dryRun });
-        const prefix = dryRun ? "[Vorschau] " : "";
-        return { content: [{ type: "text", text: `${prefix}${result.archivedCount} Tasks archiviert` }] };
+        return withContext(workingDir, ({ taskService }) => {
+          const result = taskService.archiveTasks({ columnId, olderThanDays, dryRun });
+          const prefix = dryRun ? "[Vorschau] " : "";
+          return { content: [{ type: "text", text: `${prefix}${result.archivedCount} Tasks archiviert` }] };
+        });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }
@@ -41,9 +42,10 @@ export function registerArchiveTools(server: McpServer, workingDir: string): voi
     },
     async ({ id, columnId }) => {
       try {
-        const { taskService } = getContext(workingDir);
-        const task = taskService.restoreTask(id, columnId);
-        return { content: [{ type: "text", text: `Task wiederhergestellt: "${task.title}" (ID: ${task.id}) → ${task.columnId}` }] };
+        return withContext(workingDir, ({ taskService }) => {
+          const task = taskService.restoreTask(id, columnId);
+          return { content: [{ type: "text", text: `Task wiederhergestellt: "${task.title}" (ID: ${task.id}) → ${task.columnId}` }] };
+        });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }
@@ -63,16 +65,17 @@ export function registerArchiveTools(server: McpServer, workingDir: string): voi
     },
     async ({ confirm, dryRun }) => {
       try {
-        const { taskService } = getContext(workingDir);
-        if (dryRun) {
-          const result = taskService.purgeArchive({ dryRun: true });
-          return { content: [{ type: "text", text: `[Vorschau] ${result.purgedCount} Tasks wuerden geloescht` }] };
-        }
-        if (!confirm) {
-          return { content: [{ type: "text", text: "confirm muss true sein" }], isError: true };
-        }
-        const result = taskService.purgeArchive();
-        return { content: [{ type: "text", text: `Archiv geleert: ${result.purgedCount} Tasks permanent geloescht` }] };
+        return withContext(workingDir, ({ taskService }) => {
+          if (dryRun) {
+            const result = taskService.purgeArchive({ dryRun: true });
+            return { content: [{ type: "text", text: `[Vorschau] ${result.purgedCount} Tasks wuerden geloescht` }] };
+          }
+          if (!confirm) {
+            return { content: [{ type: "text", text: "confirm muss true sein" }], isError: true };
+          }
+          const result = taskService.purgeArchive();
+          return { content: [{ type: "text", text: `Archiv geleert: ${result.purgedCount} Tasks permanent geloescht` }] };
+        });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }
@@ -89,9 +92,10 @@ export function registerArchiveTools(server: McpServer, workingDir: string): voi
     },
     async () => {
       try {
-        const { taskService } = getContext(workingDir);
-        const stats = taskService.getArchiveStats();
-        return { content: [{ type: "text", text: JSON.stringify(stats, null, 2) }] };
+        return withContext(workingDir, ({ taskService }) => {
+          const stats = taskService.getArchiveStats();
+          return { content: [{ type: "text", text: JSON.stringify(stats, null, 2) }] };
+        });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }

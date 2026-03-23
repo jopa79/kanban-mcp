@@ -18,8 +18,14 @@ const DEFAULT_COLUMNS = [
 // Datenbank oeffnen, migrieren falls noetig
 export function openDb(dbPath: string): Database {
   const db = new Database(dbPath);
-  db.run("PRAGMA journal_mode = WAL");
+  // busy_timeout zuerst — damit nachfolgende Operationen bei konkurrierenden Zugriffen warten
   db.run("PRAGMA busy_timeout = 5000");
+  // WAL ist persistent — nur setzen wenn noch nicht aktiv (vermeidet unnoetige Schreibzugriffe)
+  const mode = db.query("PRAGMA journal_mode").get() as { journal_mode: string };
+  if (mode.journal_mode !== "wal") {
+    db.run("PRAGMA journal_mode = WAL");
+  }
+  // foreign_keys muss pro Connection gesetzt werden (nicht persistent)
   db.run("PRAGMA foreign_keys = ON");
   migrateDb(db);
   return db;

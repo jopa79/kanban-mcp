@@ -73,4 +73,52 @@ describe("db", () => {
 
     expect(cols.map(c => c.id)).toEqual(["backlog", "todo", "in-progress", "review", "done"]);
   });
+
+  test("busy_timeout wird pro Connection gesetzt", () => {
+    const dir = tmpDir();
+    initBoard(dir, "Test");
+    const db = openDb(getBoardPaths(dir).dbPath);
+    const result = db.query("PRAGMA busy_timeout").get() as { timeout: number };
+    db.close();
+
+    expect(result.timeout).toBe(5000);
+  });
+
+  test("WAL ist aktiv nach openDb", () => {
+    const dir = tmpDir();
+    initBoard(dir, "Test");
+    const db = openDb(getBoardPaths(dir).dbPath);
+    const result = db.query("PRAGMA journal_mode").get() as { journal_mode: string };
+    db.close();
+
+    expect(result.journal_mode).toBe("wal");
+  });
+
+  test("foreign_keys ist aktiv nach openDb", () => {
+    const dir = tmpDir();
+    initBoard(dir, "Test");
+    const db = openDb(getBoardPaths(dir).dbPath);
+    const result = db.query("PRAGMA foreign_keys").get() as { foreign_keys: number };
+    db.close();
+
+    expect(result.foreign_keys).toBe(1);
+  });
+
+  test("WAL wird nicht unnoetig neu gesetzt wenn bereits aktiv", () => {
+    const dir = tmpDir();
+    initBoard(dir, "Test");
+    const dbPath = getBoardPaths(dir).dbPath;
+
+    // Erster Aufruf — WAL wird gesetzt
+    const db1 = openDb(dbPath);
+    const mode1 = db1.query("PRAGMA journal_mode").get() as { journal_mode: string };
+    db1.close();
+    expect(mode1.journal_mode).toBe("wal");
+
+    // Zweiter Aufruf — WAL ist bereits aktiv, kein Fehler
+    const db2 = openDb(dbPath);
+    const mode2 = db2.query("PRAGMA journal_mode").get() as { journal_mode: string };
+    db2.close();
+    expect(mode2.journal_mode).toBe("wal");
+  });
 });

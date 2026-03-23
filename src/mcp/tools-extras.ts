@@ -1,8 +1,7 @@
 // MCP Tools: Duplikat-Erkennung, Abschluss, Status
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
-import { boardExists } from "../core/db.ts";
-import { getContext } from "./mcp-context.ts";
+import { withContext } from "./mcp-context.ts";
 
 export function registerExtraTools(server: McpServer, workingDir: string): void {
   // --- kanban_add_task_checked ---
@@ -24,16 +23,17 @@ export function registerExtraTools(server: McpServer, workingDir: string): void 
     },
     async ({ title, description, columnId, createdBy, assignedTo, labels, notes, force }) => {
       try {
-        const { taskService } = getContext(workingDir);
-        const result = taskService.addTaskChecked(
-          { title, description, columnId, createdBy, assignedTo, labels, notes },
-          { force },
-        );
-        if (result.rejected) {
-          const similar = result.similarTasks?.map((t: { title: string }) => `"${t.title}"`).join(", ") ?? "";
-          return { content: [{ type: "text", text: `Abgelehnt: aehnlicher Task existiert — ${similar}. Verwende force=true zum Erstellen.` }] };
-        }
-        return { content: [{ type: "text", text: `Task erstellt: "${result.task.title}" (ID: ${result.task.id}) → ${result.task.columnId}` }] };
+        return withContext(workingDir, ({ taskService }) => {
+          const result = taskService.addTaskChecked(
+            { title, description, columnId, createdBy, assignedTo, labels, notes },
+            { force },
+          );
+          if (result.rejected) {
+            const similar = result.similarTasks?.map((t: { title: string }) => `"${t.title}"`).join(", ") ?? "";
+            return { content: [{ type: "text", text: `Abgelehnt: aehnlicher Task existiert — ${similar}. Verwende force=true zum Erstellen.` }] };
+          }
+          return { content: [{ type: "text", text: `Task erstellt: "${result.task.title}" (ID: ${result.task.id}) → ${result.task.columnId}` }] };
+        });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }
@@ -52,9 +52,10 @@ export function registerExtraTools(server: McpServer, workingDir: string): void 
     },
     async ({ id }) => {
       try {
-        const { taskService } = getContext(workingDir);
-        const task = taskService.completeTask(id);
-        return { content: [{ type: "text", text: `Task abgeschlossen: "${task.title}" (ID: ${task.id}) → ${task.columnId}` }] };
+        return withContext(workingDir, ({ taskService }) => {
+          const task = taskService.completeTask(id);
+          return { content: [{ type: "text", text: `Task abgeschlossen: "${task.title}" (ID: ${task.id}) → ${task.columnId}` }] };
+        });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }
@@ -71,13 +72,11 @@ export function registerExtraTools(server: McpServer, workingDir: string): void 
     },
     async () => {
       try {
-        if (!boardExists(workingDir)) {
-          return { content: [{ type: "text", text: "Kein Board gefunden. Zuerst kanban_init aufrufen." }], isError: true };
-        }
-        const { taskService, config } = getContext(workingDir);
-        const status = taskService.getStatus();
-        const result = { board: config.name, ...status };
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        return withContext(workingDir, ({ taskService, config }) => {
+          const status = taskService.getStatus();
+          const result = { board: config.name, ...status };
+          return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }

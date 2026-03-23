@@ -2,7 +2,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
 import { initBoard } from "../core/db.ts";
-import { getContext } from "./mcp-context.ts";
+import { withContext } from "./mcp-context.ts";
 import { registerArchiveTools } from "./tools-archive.ts";
 import { registerExtraTools } from "./tools-extras.ts";
 import { registerExportTools } from "./tools-export.ts";
@@ -51,11 +51,12 @@ export function registerTools(server: McpServer, workingDir: string): void {
     },
     async ({ title, description, columnId, createdBy, assignedTo, labels, dependsOn, notes }) => {
       try {
-        const { taskService } = getContext(workingDir);
-        const task = taskService.addTask({
-          title, description, columnId, createdBy, assignedTo, labels, dependsOn, notes,
+        return withContext(workingDir, ({ taskService }) => {
+          const task = taskService.addTask({
+            title, description, columnId, createdBy, assignedTo, labels, dependsOn, notes,
+          });
+          return { content: [{ type: "text", text: `Task erstellt: "${task.title}" (ID: ${task.id}) → ${task.columnId}` }] };
         });
-        return { content: [{ type: "text", text: `Task erstellt: "${task.title}" (ID: ${task.id}) → ${task.columnId}` }] };
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }
@@ -74,12 +75,13 @@ export function registerTools(server: McpServer, workingDir: string): void {
     },
     async ({ id }) => {
       try {
-        const { taskService } = getContext(workingDir);
-        const task = taskService.getTask(id);
-        if (!task) {
-          return { content: [{ type: "text", text: `Task '${id}' nicht gefunden` }], isError: true };
-        }
-        return { content: [{ type: "text", text: JSON.stringify(task, null, 2) }] };
+        return withContext(workingDir, ({ taskService }) => {
+          const task = taskService.getTask(id);
+          if (!task) {
+            return { content: [{ type: "text", text: `Task '${id}' nicht gefunden` }], isError: true };
+          }
+          return { content: [{ type: "text", text: JSON.stringify(task, null, 2) }] };
+        });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }
@@ -100,9 +102,10 @@ export function registerTools(server: McpServer, workingDir: string): void {
     },
     async ({ columnId, createdBy, assignedTo }) => {
       try {
-        const { taskService } = getContext(workingDir);
-        const tasks = taskService.listTasks({ columnId, createdBy, assignedTo });
-        return { content: [{ type: "text", text: JSON.stringify(tasks, null, 2) }] };
+        return withContext(workingDir, ({ taskService }) => {
+          const tasks = taskService.listTasks({ columnId, createdBy, assignedTo });
+          return { content: [{ type: "text", text: JSON.stringify(tasks, null, 2) }] };
+        });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }
@@ -122,9 +125,10 @@ export function registerTools(server: McpServer, workingDir: string): void {
     },
     async ({ id, columnId }) => {
       try {
-        const { taskService } = getContext(workingDir);
-        const task = taskService.moveTask(id, columnId);
-        return { content: [{ type: "text", text: `Task verschoben: "${task.title}" (ID: ${task.id}) → ${task.columnId}` }] };
+        return withContext(workingDir, ({ taskService }) => {
+          const task = taskService.moveTask(id, columnId);
+          return { content: [{ type: "text", text: `Task verschoben: "${task.title}" (ID: ${task.id}) → ${task.columnId}` }] };
+        });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }
@@ -148,9 +152,10 @@ export function registerTools(server: McpServer, workingDir: string): void {
     },
     async ({ id, title, description, assignedTo, labels, notes }) => {
       try {
-        const { taskService } = getContext(workingDir);
-        const task = taskService.updateTask(id, { title, description, assignedTo, labels, notes });
-        return { content: [{ type: "text", text: `Task aktualisiert: "${task.title}" (ID: ${task.id})` }] };
+        return withContext(workingDir, ({ taskService }) => {
+          const task = taskService.updateTask(id, { title, description, assignedTo, labels, notes });
+          return { content: [{ type: "text", text: `Task aktualisiert: "${task.title}" (ID: ${task.id})` }] };
+        });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }
@@ -169,10 +174,11 @@ export function registerTools(server: McpServer, workingDir: string): void {
     },
     async ({ id }) => {
       try {
-        const { taskService } = getContext(workingDir);
-        const task = taskService.getTask(id);
-        taskService.deleteTask(id);
-        return { content: [{ type: "text", text: `Task '${task?.title}' geloescht` }] };
+        return withContext(workingDir, ({ taskService }) => {
+          const task = taskService.getTask(id);
+          taskService.deleteTask(id);
+          return { content: [{ type: "text", text: `Task '${task?.title}' geloescht` }] };
+        });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }
