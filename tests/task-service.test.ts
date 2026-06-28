@@ -172,4 +172,76 @@ describe("TaskService", () => {
     });
   });
 
+  describe("dependencies", () => {
+    test("addTask mit dependsOn verdrahtet Abhaengigkeiten", () => {
+      ctx = createTestBoard();
+      const a = ctx.taskService.addTask({ title: "Basis" });
+      const b = ctx.taskService.addTask({ title: "Folgt", dependsOn: [a.id] });
+      const deps = ctx.taskService.getDependencies(b.id);
+      expect(deps.map(d => d.id)).toEqual([a.id]);
+    });
+
+    test("addDependency legt Relation an, getDependents liefert Rueckrichtung", () => {
+      ctx = createTestBoard();
+      const a = ctx.taskService.addTask({ title: "A" });
+      const b = ctx.taskService.addTask({ title: "B" });
+      ctx.taskService.addDependency(b.id, a.id);
+      expect(ctx.taskService.getDependencies(b.id).map(d => d.id)).toEqual([a.id]);
+      expect(ctx.taskService.getDependents(a.id).map(d => d.id)).toEqual([b.id]);
+    });
+
+    test("addDependency ist idempotent (kein Duplikat)", () => {
+      ctx = createTestBoard();
+      const a = ctx.taskService.addTask({ title: "A" });
+      const b = ctx.taskService.addTask({ title: "B" });
+      ctx.taskService.addDependency(b.id, a.id);
+      ctx.taskService.addDependency(b.id, a.id);
+      expect(ctx.taskService.getDependencies(b.id)).toHaveLength(1);
+    });
+
+    test("addDependency wirft bei unbekanntem Task", () => {
+      ctx = createTestBoard();
+      const a = ctx.taskService.addTask({ title: "A" });
+      expect(() => ctx.taskService.addDependency(a.id, "nope")).toThrow("nicht gefunden");
+      expect(() => ctx.taskService.addDependency("nope", a.id)).toThrow("nicht gefunden");
+    });
+
+    test("addDependency wirft bei Selbst-Abhaengigkeit", () => {
+      ctx = createTestBoard();
+      const a = ctx.taskService.addTask({ title: "A" });
+      expect(() => ctx.taskService.addDependency(a.id, a.id)).toThrow("sich selbst");
+    });
+
+    test("removeDependency entfernt Relation", () => {
+      ctx = createTestBoard();
+      const a = ctx.taskService.addTask({ title: "A" });
+      const b = ctx.taskService.addTask({ title: "B", dependsOn: [a.id] });
+      ctx.taskService.removeDependency(b.id, a.id);
+      expect(ctx.taskService.getDependencies(b.id)).toHaveLength(0);
+    });
+
+    test("isBlocked: true solange Abhaengigkeit offen, false nach Abschluss", () => {
+      ctx = createTestBoard();
+      const a = ctx.taskService.addTask({ title: "A" });
+      const b = ctx.taskService.addTask({ title: "B", dependsOn: [a.id] });
+      expect(ctx.taskService.isBlocked(b.id)).toBe(true);
+      ctx.taskService.completeTask(a.id);
+      expect(ctx.taskService.isBlocked(b.id)).toBe(false);
+    });
+
+    test("isBlocked: false ohne Abhaengigkeiten", () => {
+      ctx = createTestBoard();
+      const a = ctx.taskService.addTask({ title: "A" });
+      expect(ctx.taskService.isBlocked(a.id)).toBe(false);
+    });
+
+    test("Loeschen eines Tasks raeumt Abhaengigkeiten per Cascade ab", () => {
+      ctx = createTestBoard();
+      const a = ctx.taskService.addTask({ title: "A" });
+      const b = ctx.taskService.addTask({ title: "B", dependsOn: [a.id] });
+      ctx.taskService.deleteTask(a.id);
+      expect(ctx.taskService.getDependencies(b.id)).toHaveLength(0);
+    });
+  });
+
 });

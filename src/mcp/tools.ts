@@ -80,7 +80,14 @@ export function registerTools(server: McpServer, workingDir: string): void {
           if (!task) {
             return { content: [{ type: "text", text: `Task '${id}' nicht gefunden` }], isError: true };
           }
-          return { content: [{ type: "text", text: JSON.stringify(task, null, 2) }] };
+          // Abhaengigkeiten mit ausliefern, damit Agenten den Blockier-Status kennen
+          const enriched = {
+            ...task,
+            isBlocked: taskService.isBlocked(task.id),
+            dependsOn: taskService.getDependencies(task.id).map((d) => ({ id: d.id, title: d.title, columnId: d.columnId })),
+            dependents: taskService.getDependents(task.id).map((d) => ({ id: d.id, title: d.title, columnId: d.columnId })),
+          };
+          return { content: [{ type: "text", text: JSON.stringify(enriched, null, 2) }] };
         });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
@@ -178,6 +185,60 @@ export function registerTools(server: McpServer, workingDir: string): void {
           const task = taskService.getTask(id);
           taskService.deleteTask(id);
           return { content: [{ type: "text", text: `Task '${task?.title}' geloescht` }] };
+        });
+      } catch (err) {
+        return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+
+  // --- kanban_add_dependency ---
+  server.registerTool(
+    "kanban_add_dependency",
+    {
+      title: "Abhaengigkeit hinzufuegen",
+      description: "Task von einem anderen Task abhaengig machen (Task wird blockiert, bis die Abhaengigkeit fertig ist)",
+      inputSchema: z.object({
+        id: z.string().describe("Task-ID des abhaengigen Tasks"),
+        dependsOnId: z.string().describe("Task-ID von der abgehangen wird (muss zuerst fertig sein)"),
+      }),
+    },
+    async ({ id, dependsOnId }) => {
+      try {
+        return withContext(workingDir, ({ taskService }) => {
+          taskService.addDependency(id, dependsOnId);
+          const task = taskService.getTask(id);
+          const dep = taskService.getTask(dependsOnId);
+          return { content: [{ type: "text", text: `"${task?.title}" haengt jetzt ab von "${dep?.title}" (blockiert: ${taskService.isBlocked(task!.id)})` }] };
+        });
+      } catch (err) {
+        return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+
+  // --- kanban_remove_dependency ---
+  server.registerTool(
+    "kanban_remove_dependency",
+    {
+      title: "Abhaengigkeit entfernen",
+      description: "Eine bestehende Abhaengigkeit zwischen zwei Tasks aufheben",
+      inputSchema: z.object({
+        id: z.string().describe("Task-ID des abhaengigen Tasks"),
+        dependsOnId: z.string().describe("Task-ID der zu entfernenden Abhaengigkeit"),
+      }),
+    },
+    async ({ id, dependsOnId }) => {
+      try {
+        return withContext(workingDir, ({ taskService }) => {
+          const task = taskService.getTask(id);
+          if (!task) {
+            return { content: [{ type: "text", text: `Task '${id}' nicht gefunden` }], isError: true };
+          }
+          // gekuerzte dependsOnId aufloesen, da removeDependency exakte IDs erwartet
+          const dep = taskService.getTask(dependsOnId);
+          taskService.removeDependency(task.id, dep?.id ?? dependsOnId);
+          return { content: [{ type: "text", text: `Abhaengigkeit von "${task.title}" entfernt (blockiert: ${taskService.isBlocked(task.id)})` }] };
         });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };

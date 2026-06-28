@@ -9,6 +9,11 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Added
 
+- MCP: Task-Abhaengigkeiten vollstaendig ueber MCP nutzbar (vorher nur bei Erstellung setzbar)
+  - `kanban_add_dependency` — Task nachtraeglich von einem anderen abhaengig machen
+  - `kanban_remove_dependency` — bestehende Abhaengigkeit aufheben (loest gekuerzte IDs auf)
+  - `kanban_get_task` liefert jetzt `isBlocked`, `dependsOn` und `dependents` mit
+  - Service-Tests fuer Abhaengigkeiten (get/add/remove/isBlocked/Cascade)
 - TUI: `a` = Task direkt archivieren (mit Bestaetigungsdialog)
 - TUI: Sticky Header/Footer — Header und StatusBar bleiben bei langen Listen sichtbar
 - Board Export/Import als ZIP-Archiv
