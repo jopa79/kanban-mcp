@@ -45,8 +45,8 @@ export function TextArea({ initialValue, onSave, onCancel }: TextAreaProps) {
 
     // Enter = neue Zeile
     if (key.return) {
-      const before = lines[row].slice(0, col);
-      const after = lines[row].slice(col);
+      const before = lines[row]!.slice(0, col);
+      const after = lines[row]!.slice(col);
       const next = [...lines];
       next[row] = before;
       next.splice(row + 1, 0, after);
@@ -60,14 +60,14 @@ export function TextArea({ initialValue, onSave, onCancel }: TextAreaProps) {
     if (key.backspace || key.delete) {
       if (col > 0) {
         const next = [...lines];
-        next[row] = next[row].slice(0, col - 1) + next[row].slice(col);
+        next[row] = next[row]!.slice(0, col - 1) + next[row]!.slice(col);
         setLines(next);
         setCol(col - 1);
       } else if (row > 0) {
         // Zeile mit vorheriger zusammenfuehren
         const next = [...lines];
-        const prevLen = next[row - 1].length;
-        next[row - 1] += next[row];
+        const prevLen = next[row - 1]!.length;
+        next[row - 1] += next[row]!;
         next.splice(row, 1);
         setLines(next);
         setRow(row - 1);
@@ -80,14 +80,14 @@ export function TextArea({ initialValue, onSave, onCancel }: TextAreaProps) {
     if (key.upArrow) {
       if (row > 0) {
         setRow(row - 1);
-        setCol(Math.min(col, lines[row - 1].length));
+        setCol(Math.min(col, lines[row - 1]!.length));
       }
       return;
     }
     if (key.downArrow) {
       if (row < lines.length - 1) {
         setRow(row + 1);
-        setCol(Math.min(col, lines[row + 1].length));
+        setCol(Math.min(col, lines[row + 1]!.length));
       }
       return;
     }
@@ -96,12 +96,12 @@ export function TextArea({ initialValue, onSave, onCancel }: TextAreaProps) {
         setCol(col - 1);
       } else if (row > 0) {
         setRow(row - 1);
-        setCol(lines[row - 1].length);
+        setCol(lines[row - 1]!.length);
       }
       return;
     }
     if (key.rightArrow) {
-      if (col < lines[row].length) {
+      if (col < lines[row]!.length) {
         setCol(col + 1);
       } else if (row < lines.length - 1) {
         setRow(row + 1);
@@ -113,7 +113,7 @@ export function TextArea({ initialValue, onSave, onCancel }: TextAreaProps) {
     // Tab = 2 Leerzeichen
     if (key.tab) {
       const next = [...lines];
-      next[row] = next[row].slice(0, col) + "  " + next[row].slice(col);
+      next[row] = next[row]!.slice(0, col) + "  " + next[row]!.slice(col);
       setLines(next);
       setCol(col + 2);
       return;
@@ -122,7 +122,7 @@ export function TextArea({ initialValue, onSave, onCancel }: TextAreaProps) {
     // Normaler Text
     if (input && !key.ctrl && !key.meta) {
       const next = [...lines];
-      next[row] = next[row].slice(0, col) + input + next[row].slice(col);
+      next[row] = next[row]!.slice(0, col) + input + next[row]!.slice(col);
       setLines(next);
       setCol(col + input.length);
     }

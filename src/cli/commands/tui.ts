@@ -9,5 +9,5 @@ export const tuiCommand = new Command("tui")
   .description("Interaktive Terminal-UI starten")
   .action(() => {
     const workingDir = process.cwd();
-    render(React.createElement(App, { workingDir }), { fullScreen: true });
+    render(React.createElement(App, { workingDir }));
   });

@@ -1,5 +1,5 @@
 // Archiv-Management: archivieren, wiederherstellen, purgen
-import type { Database } from "bun:sqlite";
+import type { Database, SQLQueryBindings } from "bun:sqlite";
 import type { BoardService } from "./board-service.ts";
 import type { NotesService } from "./notes-service.ts";
 import type { Task, TaskRow } from "./types.ts";
@@ -19,7 +19,7 @@ export class ArchiveService {
     dryRun?: boolean;
   }): { archivedCount: number; tasks: Task[] } {
     const conditions: string[] = ["archived = 0"];
-    const params: unknown[] = [];
+    const params: SQLQueryBindings[] = [];
 
     if (options?.columnId) {
       conditions.push("column_id = ?");
@@ -53,8 +53,7 @@ export class ArchiveService {
       const now = new Date().toISOString();
       this.db.run(
         `UPDATE tasks SET archived = 1, updated_at = ? ${where}`,
-        now,
-        ...params,
+        [now, ...params],
       );
     }
 
@@ -73,7 +72,7 @@ export class ArchiveService {
     const now = new Date().toISOString();
     this.db.run(
       "UPDATE tasks SET archived = 1, updated_at = ?, version = version + 1 WHERE id = ?",
-      now, task.id,
+      [now, task.id],
     );
     const updated = this.db.query("SELECT * FROM tasks WHERE id = ?").get(task.id) as TaskRow;
     return rowToTask(updated);
@@ -103,9 +102,7 @@ export class ArchiveService {
     const now = new Date().toISOString();
     this.db.run(
       "UPDATE tasks SET archived = 0, column_id = ?, updated_at = ?, version = version + 1 WHERE id = ?",
-      columnId,
-      now,
-      task.id,
+      [columnId, now, task.id],
     );
 
     const updated = this.db

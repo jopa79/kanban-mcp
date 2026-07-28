@@ -31,6 +31,19 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   - TUI: Notes-Anzeige in Detail-Ansicht, `e` zum Editieren, `[N]`-Indikator auf Task-Karten
   - `hasNotes` Flag bei `listTasks` (Performance: kein Datei-Inhalt laden)
 
+### Fixed
+
+- `kanban sync` konstruierte `TaskService` mit nur 2 statt 3 Argumenten
+  (`notesService` fehlte) — jeder Sync-Lauf gegen ein nicht-leeres Board brach
+  mit `undefined is not an object (evaluating 'this.notesService.exists')` ab
+- MCP `kanban_purge_archive` las `result.purgedCount` statt `result.deletedCount`
+  und lieferte deshalb `undefined` in der Tool-Antwort statt der echten Anzahl
+- `bunx tsc --noEmit` bereinigt (24 vorbestehende Fehler, davon 13 durch
+  `SQLQueryBindings`-Aufrufsyntax in `task-service.ts`/`archive-service.ts`,
+  Rest Null-Checks unter `noUncheckedIndexedAccess` sowie ein totes,
+  in ink 6.8.0 nie gelesenes `fullScreen`-Feld in `kanban tui`) — reine
+  Aufrufsyntax-/Typ-Fixes, keine Verhaltensaenderung
+
 ## [0.1.0] - 2026-03-03
 
 ### Added

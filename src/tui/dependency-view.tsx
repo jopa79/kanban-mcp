@@ -49,7 +49,7 @@ export function DependencyView({ task, dependencies, dependents, onAdd, onRemove
 
     // x = Abhaengigkeit entfernen
     if (input === "x" && allItems.length > 0) {
-      onRemove(allItems[cursor].id);
+      onRemove(allItems[cursor]!.id);
       setCursor(Math.max(0, cursor - 1));
     }
   });

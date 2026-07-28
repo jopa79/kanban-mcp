@@ -32,7 +32,7 @@ export function registerExtraTools(server: McpServer, workingDir: string): void 
             const similar = result.similarTasks?.map((t: { title: string }) => `"${t.title}"`).join(", ") ?? "";
             return { content: [{ type: "text", text: `Abgelehnt: aehnlicher Task existiert — ${similar}. Verwende force=true zum Erstellen.` }] };
           }
-          return { content: [{ type: "text", text: `Task erstellt: "${result.task.title}" (ID: ${result.task.id}) → ${result.task.columnId}` }] };
+          return { content: [{ type: "text", text: `Task erstellt: "${result.task!.title}" (ID: ${result.task!.id}) → ${result.task!.columnId}` }] };
         });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };

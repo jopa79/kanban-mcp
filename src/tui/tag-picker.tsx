@@ -36,7 +36,7 @@ export function TagPicker({ selectedTags, onSave, onCancel }: TagPickerProps) {
 
     // Space = Toggle
     if (input === " ") {
-      const tag = TAGS[cursor].name;
+      const tag = TAGS[cursor]!.name;
       const next = new Set(selected);
       if (next.has(tag)) {
         next.delete(tag);

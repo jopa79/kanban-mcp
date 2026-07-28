@@ -68,13 +68,13 @@ export function registerArchiveTools(server: McpServer, workingDir: string): voi
         return withContext(workingDir, ({ taskService }) => {
           if (dryRun) {
             const result = taskService.purgeArchive({ dryRun: true });
-            return { content: [{ type: "text", text: `[Vorschau] ${result.purgedCount} Tasks wuerden geloescht` }] };
+            return { content: [{ type: "text", text: `[Vorschau] ${result.deletedCount} Tasks wuerden geloescht` }] };
           }
           if (!confirm) {
             return { content: [{ type: "text", text: "confirm muss true sein" }], isError: true };
           }
           const result = taskService.purgeArchive();
-          return { content: [{ type: "text", text: `Archiv geleert: ${result.purgedCount} Tasks permanent geloescht` }] };
+          return { content: [{ type: "text", text: `Archiv geleert: ${result.deletedCount} Tasks permanent geloescht` }] };
         });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };

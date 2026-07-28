@@ -136,7 +136,7 @@ describe('sortForNextTask', () => {
     ];
 
     const sorted = sortForNextTask(tasks);
-    expect(sorted[0].id).toBe('meta');
+    expect(sorted[0]!.id).toBe('meta');
   });
 
   it('sortiert in_progress vor open', () => {
@@ -146,7 +146,7 @@ describe('sortForNextTask', () => {
     ];
 
     const sorted = sortForNextTask(tasks);
-    expect(sorted[0].id).toBe('wip1');
+    expect(sorted[0]!.id).toBe('wip1');
   });
 
   it('behaelt Position bei gleicher Prioritaet', () => {

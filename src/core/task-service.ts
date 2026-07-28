@@ -1,5 +1,5 @@
 // Task CRUD und Bewegungslogik
-import type { Database } from "bun:sqlite";
+import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { nanoid } from "nanoid";
 import type { BoardService } from "./board-service.ts";
 import { ArchiveService } from "./archive-service.ts";
@@ -30,16 +30,18 @@ export class TaskService extends ArchiveService {
     this.db.run(
       `INSERT INTO tasks (id, title, description, column_id, created_by, assigned_to, labels, position, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      id,
-      input.title,
-      input.description ?? null,
-      columnId,
-      input.createdBy ?? "user",
-      input.assignedTo ?? null,
-      input.labels ? JSON.stringify(input.labels) : null,
-      position,
-      now,
-      now,
+      [
+        id,
+        input.title,
+        input.description ?? null,
+        columnId,
+        input.createdBy ?? "user",
+        input.assignedTo ?? null,
+        input.labels ? JSON.stringify(input.labels) : null,
+        position,
+        now,
+        now,
+      ],
     );
 
     if (input.dependsOn?.length) {
@@ -117,7 +119,7 @@ export class TaskService extends ArchiveService {
   // Tasks auflisten mit optionalen Filtern
   listTasks(filter?: ListTasksFilter): Task[] {
     const conditions: string[] = [];
-    const params: unknown[] = [];
+    const params: SQLQueryBindings[] = [];
 
     if (!filter?.includeArchived) {
       conditions.push("archived = 0");
@@ -168,7 +170,7 @@ export class TaskService extends ArchiveService {
     const now = new Date().toISOString();
     this.db.run(
       "UPDATE tasks SET column_id = ?, position = ?, updated_at = ?, version = version + 1 WHERE id = ?",
-      columnId, newPosition, now, task.id,
+      [columnId, newPosition, now, task.id],
     );
 
     return this.getTask(task.id)!;
@@ -190,8 +192,8 @@ export class TaskService extends ArchiveService {
 
     // Positionen tauschen
     const now = new Date().toISOString();
-    this.db.run("UPDATE tasks SET position = ?, updated_at = ? WHERE id = ?", neighbor.position, now, task.id);
-    this.db.run("UPDATE tasks SET position = ?, updated_at = ? WHERE id = ?", task.position, now, neighbor.id);
+    this.db.run("UPDATE tasks SET position = ?, updated_at = ? WHERE id = ?", [neighbor.position, now, task.id]);
+    this.db.run("UPDATE tasks SET position = ?, updated_at = ? WHERE id = ?", [task.position, now, neighbor.id]);
 
     return this.getTask(task.id)!;
   }
@@ -202,7 +204,7 @@ export class TaskService extends ArchiveService {
     if (!task) throw new Error(`Task '${id}' nicht gefunden`);
 
     const updates: string[] = [];
-    const params: unknown[] = [];
+    const params: SQLQueryBindings[] = [];
 
     if (changes.title !== undefined) { updates.push("title = ?"); params.push(changes.title); }
     if (changes.description !== undefined) { updates.push("description = ?"); params.push(changes.description); }
@@ -225,7 +227,7 @@ export class TaskService extends ArchiveService {
     updates.push("version = version + 1");
     params.push(task.id);
 
-    this.db.run(`UPDATE tasks SET ${updates.join(", ")} WHERE id = ?`, ...params);
+    this.db.run(`UPDATE tasks SET ${updates.join(", ")} WHERE id = ?`, params);
     return this.getTask(task.id)!;
   }
 
@@ -233,7 +235,7 @@ export class TaskService extends ArchiveService {
   deleteTask(id: string): boolean {
     const task = this.getTask(id);
     if (!task) throw new Error(`Task '${id}' nicht gefunden`);
-    this.db.run("DELETE FROM tasks WHERE id = ?", task.id);
+    this.db.run("DELETE FROM tasks WHERE id = ?", [task.id]);
     this.notesService.delete(task.id);
     return true;
   }
@@ -270,7 +272,7 @@ export class TaskService extends ArchiveService {
     if (taskId === dep.id) throw new Error("Task kann nicht von sich selbst abhaengen");
     this.db.run(
       "INSERT OR IGNORE INTO dependencies (task_id, depends_on_id) VALUES (?, ?)",
-      task.id, dep.id,
+      [task.id, dep.id],
     );
   }
 
@@ -278,7 +280,7 @@ export class TaskService extends ArchiveService {
   removeDependency(taskId: string, dependsOnId: string): void {
     this.db.run(
       "DELETE FROM dependencies WHERE task_id = ? AND depends_on_id = ?",
-      taskId, dependsOnId,
+      [taskId, dependsOnId],
     );
   }
 

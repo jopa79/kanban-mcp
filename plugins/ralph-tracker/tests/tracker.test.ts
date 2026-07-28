@@ -88,9 +88,9 @@ describe('Core Query — mit echtem Board', () => {
     const tasks = await tracker.getTasks();
     if (tasks.length === 0) return; // Skip wenn keine Tasks
 
-    const task = await tracker.getTask(tasks[0].id);
+    const task = await tracker.getTask(tasks[0]!.id);
     expect(task).toBeDefined();
-    expect(task!.id).toBe(tasks[0].id);
+    expect(task!.id).toBe(tasks[0]!.id);
   });
 
   it('getTask gibt undefined fuer unbekannte ID', async () => {
