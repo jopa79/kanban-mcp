@@ -1,7 +1,7 @@
 // CLI Command: kanban init
 import { Command } from "commander";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, isAbsolute } from "node:path";
 import { initBoard } from "../../core/db.ts";
 import { RegistryService } from "../../core/registry-service.ts";
 import { success, error } from "../formatters.ts";
@@ -19,9 +19,15 @@ import { success, error } from "../formatters.ts";
 // ~/.config/kanban. Ein leerer XDG_CONFIG_HOME zaehlt laut Spec als "nicht
 // gesetzt" -- das gehoert zur Konvention dazu, ihn zu ignorieren waere auf
 // Linux-Systemen schlicht falsch.
+//
+// Ein RELATIVER XDG_CONFIG_HOME ist laut Spec ebenfalls ungueltig und zaehlt
+// als nicht gesetzt. Ohne diese Pruefung wuerde die Registry relativ zum
+// jeweiligen Arbeitsverzeichnis landen -- also je nach Aufrufort in einer
+// anderen Datei.
 export function defaultRegistryDir(): string {
   const xdgConfigHome = process.env.XDG_CONFIG_HOME;
-  const configHome = xdgConfigHome ? xdgConfigHome : join(homedir(), ".config");
+  const isUsable = xdgConfigHome !== undefined && isAbsolute(xdgConfigHome);
+  const configHome = isUsable ? xdgConfigHome : join(homedir(), ".config");
   return join(configHome, "kanban");
 }
 
@@ -47,7 +53,7 @@ export function runInit(projectDir: string, name: string, options: RunInitOption
 export const initCommand = new Command("init")
   .description("Neues Kanban Board initialisieren")
   .argument("[name]", "Board-Name", "Kanban Board")
-  .option("--no-register", "Board nicht in der Registry eintragen (~/.kanban/registry.json)")
+  .option("--no-register", "Board nicht in der Registry eintragen (~/.config/kanban/registry.json)")
   .action((name: string, options: { register: boolean }) => {
     try {
       const kanbanDir = runInit(process.cwd(), name, { register: options.register });

@@ -4,7 +4,7 @@
 import { test, expect, describe, beforeAll, afterAll, afterEach } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
-import { join } from "node:path";
+import { join, isAbsolute } from "node:path";
 import { RegistryService } from "../src/core/registry-service.ts";
 import { initBoard } from "../src/core/db.ts";
 import { runInit, defaultRegistryDir } from "../src/cli/commands/init.ts";
@@ -208,6 +208,19 @@ describe("RegistryService", () => {
       test("respektiert XDG_CONFIG_HOME wenn gesetzt", () => {
         process.env.XDG_CONFIG_HOME = "/custom/xdg/config";
         expect(defaultRegistryDir()).toBe(join("/custom/xdg/config", "kanban"));
+      });
+
+      // Laut XDG-Spec ist ein relativer Wert ungueltig und zaehlt als nicht
+      // gesetzt. Ohne diese Pruefung landet die Registry relativ zum cwd --
+      // je nach Aufrufort also in einer anderen Datei.
+      test("ignoriert XDG_CONFIG_HOME wenn der Pfad relativ ist", () => {
+        process.env.XDG_CONFIG_HOME = "tmp";
+        expect(defaultRegistryDir()).toBe(join(homedir(), ".config", "kanban"));
+      });
+
+      test("liefert immer einen absoluten Pfad", () => {
+        process.env.XDG_CONFIG_HOME = "relativ/pfad";
+        expect(isAbsolute(defaultRegistryDir())).toBe(true);
       });
     });
 
