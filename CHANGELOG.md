@@ -9,6 +9,22 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Added
 
+- Board-Registry (`~/.config/kanban/registry.json`, respektiert
+  `XDG_CONFIG_HOME`; pfadbasierter Kern von P3-1) — Grundlage fuer das
+  kommende `kanban boards`-Kommando
+  - `src/core/registry-service.ts`: registrieren (idempotent), entfernen,
+    lesen; tote Pfade werden als `missing` markiert statt entfernt
+  - Registry-Verzeichnis ist injizierbar (Konstruktor-Parameter), niemals im
+    Service hartkodiert
+  - Bewusst **nicht** unter `~/.kanban/` — das heisst im Code bereits
+    eindeutig "hier liegt ein Board" (siehe `getBoardPaths()` in `db.ts`)
+  - Atomares Schreiben (tmp-Datei + rename) gegen gleichzeitige Prozesse
+  - `kanban init` registriert automatisch, `--no-register` schaltet das ab
+  - **Bewusst getrennt**: `initBoard()` selbst registriert nie — sonst waere
+    die Registry nach jedem Testlauf (`tests/helpers.ts`) voller temporaerer
+    Pfade
+  - Noch offen (folgt nach P0-1/`BoardConfig`): `kanban boards`-Kommando,
+    Schema-v2-Erkennung, Task-Zahlen pro Board
 - MCP: Task-Abhaengigkeiten vollstaendig ueber MCP nutzbar (vorher nur bei Erstellung setzbar)
   - `kanban_add_dependency` — Task nachtraeglich von einem anderen abhaengig machen
   - `kanban_remove_dependency` — bestehende Abhaengigkeit aufheben (loest gekuerzte IDs auf)
