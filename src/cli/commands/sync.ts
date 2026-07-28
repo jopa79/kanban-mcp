@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { boardExists, openDb, getBoardPaths } from "../../core/db.ts";
 import { BoardService } from "../../core/board-service.ts";
 import { TaskService } from "../../core/task-service.ts";
+import { NotesService } from "../../core/notes-service.ts";
 
 // TodoWrite Status -> Kanban Spalte
 const STATUS_TO_COLUMN: Record<string, string> = {
@@ -69,7 +70,8 @@ export const syncCommand = new Command("sync")
     const paths = getBoardPaths(cwd);
     const db = openDb(paths.dbPath);
     const boardService = new BoardService(db);
-    const taskService = new TaskService(db, boardService);
+    const notesService = new NotesService(paths.kanbanDir);
+    const taskService = new TaskService(db, boardService, notesService);
 
     let created = 0;
     let moved = 0;
