@@ -109,3 +109,17 @@ bun --hot ./index.ts
 ```
 
 For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues in `jopa79/kanban-mcp`, via the `gh` CLI. The `.kanban/` board is the in-session coordination surface, not the issue tracker. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, unchanged: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` plus `docs/decisions/` at the repo root — note `docs/decisions/`, not the upstream default `docs/adr/`. See `docs/agents/domain.md`.
