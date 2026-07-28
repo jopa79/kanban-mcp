@@ -1,6 +1,9 @@
 // Tests fuer BoardService
 import { test, expect, describe, afterEach } from "bun:test";
+import { writeFileSync } from "node:fs";
 import { createTestBoard, type TestContext } from "./helpers.ts";
+import { BoardService } from "../src/core/board-service.ts";
+import { getBoardPaths, loadBoardConfig } from "../src/core/db.ts";
 
 describe("BoardService", () => {
   let ctx: TestContext;
@@ -59,5 +62,42 @@ describe("BoardService", () => {
     ctx = createTestBoard();
     const col = ctx.boardService.getColumn("in-progress");
     expect(col!.wipLimit).toBe(3);
+  });
+
+  // P0-2: Spalten kommen jetzt aus config.json, position wird aus dem Array-Index
+  // abgeleitet (ADR 0001). Kein .sort() — die Datei-Reihenfolge ist die Ordnung.
+  test("getColumns folgt der Reihenfolge aus config.json, position folgt dem Index", () => {
+    ctx = createTestBoard();
+    const paths = getBoardPaths(ctx.dir);
+    const config = loadBoardConfig(paths.configPath);
+
+    // Reihenfolge umkehren und zurueckschreiben — simuliert manuelles Umsortieren
+    const reordered = { ...config, columns: [...config.columns].reverse() };
+    writeFileSync(paths.configPath, JSON.stringify(reordered, null, 2));
+
+    const reloadedConfig = loadBoardConfig(paths.configPath);
+    const boardService = new BoardService(ctx.db, reloadedConfig);
+    const cols = boardService.getColumns();
+
+    expect(cols.map((c) => c.id)).toEqual(["done", "review", "in-progress", "todo", "backlog"]);
+    expect(cols[0]!.position).toBe(0);
+    expect(cols[4]!.position).toBe(4);
+  });
+
+  test("getOrphanColumnIds ist leer wenn alle Tasks bekannte Spalten haben", () => {
+    ctx = createTestBoard();
+    ctx.taskService.addTask({ title: "Task 1" });
+    expect(ctx.boardService.getOrphanColumnIds()).toEqual([]);
+  });
+
+  test("getOrphanColumnIds findet Tasks in Spalten, die in config.json fehlen", () => {
+    ctx = createTestBoard();
+    const task = ctx.taskService.addTask({ title: "Task 1" });
+    // Direkter SQL-Zugriff simuliert eine Spalte, die es in der Config nicht (mehr)
+    // gibt (z.B. nach manuellem Config-Edit oder Import) — moveTask() selbst wuerde
+    // das ueber getColumn() ablehnen.
+    ctx.db.run("UPDATE tasks SET column_id = 'geloeschte-spalte' WHERE id = ?", [task.id]);
+
+    expect(ctx.boardService.getOrphanColumnIds()).toEqual(["geloeschte-spalte"]);
   });
 });

@@ -9,6 +9,19 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Added
 
+- Schema v3: Spalten-Konfiguration in `.kanban/config.json` statt in einer
+  DB-Tabelle — lesbar, editierbar und versionierbar (ADR 0001, `docs/decisions/0001-spalten-in-config-statt-datenbank.md`)
+  - Jede Spalte bekommt `allowEntry` (darf `kanban_add_task` dort neue Tasks
+    anlegen?) statt einer separaten Eintrittsspalten-Liste im Code
+  - Kein `position`-Feld mehr — die Array-Reihenfolge in `config.json` ist die
+    Reihenfolge; eine Spalte verschieben heisst eine Zeile verschieben
+  - `validateBoardConfig()` / `loadBoardConfig()` validieren config.json beim
+    Laden mit verstaendlichen Fehlermeldungen (Pfad + Grund, kein Stacktrace):
+    fehlende/leere Spaltenliste, keine oder mehrere Terminal-Spalten, keine
+    Eintrittsspalte, doppelte Spalten-IDs, faelschlich vorhandenes `position`-Feld
+  - `BoardService.getOrphanColumnIds()` — findet Tasks, deren Spalte in
+    `config.json` fehlt (Grundlage fuer die Waisen-Behandlung in einem
+    Folge-Task; wird aktuell nur ermittelt, noch nicht in TUI/CLI angezeigt)
 - Board-Registry (`~/.config/kanban/registry.json`, respektiert
   `XDG_CONFIG_HOME`; pfadbasierter Kern von P3-1) — Grundlage fuer das
   kommende `kanban boards`-Kommando
@@ -46,6 +59,22 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   - MCP `kanban_get_task` liefert Notes-Inhalt mit
   - TUI: Notes-Anzeige in Detail-Ansicht, `e` zum Editieren, `[N]`-Indikator auf Task-Karten
   - `hasNotes` Flag bei `listTasks` (Performance: kein Datei-Inhalt laden)
+
+### Changed
+
+- `BoardService` liest Spalten jetzt aus `config.json` statt per SQL aus der
+  `columns`-Tabelle (`getColumns`, `getColumn`, `getTerminalColumn`); die
+  `columns`-Tabelle entfaellt, `tasks.column_id` hat keinen Fremdschluessel
+  mehr darauf. `getColumnTaskCount` bleibt SQL — zaehlt Tasks, nicht Spalten
+- DB-Schema-Version 2 → 3. `openDb()` migriert nicht mehr automatisch beim
+  Oeffnen (bisheriges `migrateDb()` entfernt) — bei einer aelteren
+  Schema-Version bricht das Oeffnen mit Pfad und Hinweis auf `kanban migrate`
+  ab. Das Migrationskommando selbst folgt in einem separaten Task; bis dahin
+  betrifft das nur Boards, die vor diesem Change angelegt wurden
+- Bekannte Einschraenkung (vorerst): `kanban import` eines v2-ZIP-Archivs
+  schreibt Spalten noch in die nicht mehr existierende `columns`-Tabelle und
+  schlaegt deshalb aktuell fehl. v2-Import-Kompatibilitaet ist als eigener
+  Task vorgemerkt
 
 ### Fixed
 

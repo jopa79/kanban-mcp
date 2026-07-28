@@ -1,7 +1,7 @@
 // CLI Command: kanban sync
 // Liest TodoWrite Hook-Input von stdin und synchronisiert ins Board
 import { Command } from "commander";
-import { boardExists, openDb, getBoardPaths } from "../../core/db.ts";
+import { boardExists, openDb, getBoardPaths, loadBoardConfig } from "../../core/db.ts";
 import { BoardService } from "../../core/board-service.ts";
 import { TaskService } from "../../core/task-service.ts";
 import { NotesService } from "../../core/notes-service.ts";
@@ -69,7 +69,8 @@ export const syncCommand = new Command("sync")
 
     const paths = getBoardPaths(cwd);
     const db = openDb(paths.dbPath);
-    const boardService = new BoardService(db);
+    const config = loadBoardConfig(paths.configPath);
+    const boardService = new BoardService(db, config);
     const notesService = new NotesService(paths.kanbanDir);
     const taskService = new TaskService(db, boardService, notesService);
 

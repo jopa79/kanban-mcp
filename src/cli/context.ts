@@ -1,6 +1,5 @@
 // CLI-Kontext: DB oeffnen, Services bereitstellen
-import { readFileSync } from "node:fs";
-import { openDb, boardExists, getBoardPaths } from "../core/db.ts";
+import { openDb, boardExists, getBoardPaths, loadBoardConfig } from "../core/db.ts";
 import { BoardService } from "../core/board-service.ts";
 import { TaskService } from "../core/task-service.ts";
 import { NotesService } from "../core/notes-service.ts";
@@ -26,8 +25,8 @@ export function getContext(cwd?: string): CliContext {
 
   const paths = getBoardPaths(projectDir);
   const db = openDb(paths.dbPath);
-  const config: BoardConfig = JSON.parse(readFileSync(paths.configPath, "utf-8"));
-  const boardService = new BoardService(db);
+  const config: BoardConfig = loadBoardConfig(paths.configPath);
+  const boardService = new BoardService(db, config);
   const notesService = new NotesService(paths.kanbanDir);
   const taskService = new TaskService(db, boardService, notesService);
 

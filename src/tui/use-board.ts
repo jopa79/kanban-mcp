@@ -2,7 +2,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { watch, type FSWatcher } from "node:fs";
 import type { Column, Task, UpdateTaskInput } from "../core/types.ts";
-import { openDb, getBoardPaths } from "../core/db.ts";
+import { openDb, getBoardPaths, loadBoardConfig } from "../core/db.ts";
 import { BoardService } from "../core/board-service.ts";
 import { TaskService } from "../core/task-service.ts";
 import { NotesService } from "../core/notes-service.ts";
@@ -11,7 +11,8 @@ import { NotesService } from "../core/notes-service.ts";
 function createServices(workingDir: string) {
   const paths = getBoardPaths(workingDir);
   const db = openDb(paths.dbPath);
-  const boardService = new BoardService(db);
+  const config = loadBoardConfig(paths.configPath);
+  const boardService = new BoardService(db, config);
   const notesService = new NotesService(paths.kanbanDir);
   const taskService = new TaskService(db, boardService, notesService);
   return { db, taskService, notesService, kanbanDir: paths.kanbanDir };
@@ -20,7 +21,8 @@ function createServices(workingDir: string) {
 // Daten aus der DB laden
 function loadData(workingDir: string) {
   const { db, taskService } = createServices(workingDir);
-  const boardService = new BoardService(db);
+  const config = loadBoardConfig(getBoardPaths(workingDir).configPath);
+  const boardService = new BoardService(db, config);
   const columns = boardService.getColumns();
   const tasks = taskService.listTasks();
   db.close();

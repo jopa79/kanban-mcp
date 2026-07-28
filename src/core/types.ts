@@ -1,10 +1,14 @@
 // Basis-Typen fuer das Kanban Board
 
+// Domain-Objekt einer Spalte. 'position' wird beim Laden aus dem Index im
+// config.columns-Array abgeleitet und nie aus der Datei gelesen (siehe
+// ColumnConfig und ADR 0001).
 export interface Column {
   id: string;
   name: string;
   position: number;
   wipLimit: number;
+  allowEntry: boolean;
   isTerminal: boolean;
 }
 
@@ -26,9 +30,21 @@ export interface Task {
   isBlocked?: boolean;
 }
 
+// Spalten-Definition wie sie in config.json steht — bewusst OHNE 'position'.
+// Die Array-Reihenfolge in BoardConfig.columns IST die Reihenfolge (ADR 0001).
+export interface ColumnConfig {
+  id: string;
+  name: string;
+  wipLimit: number;
+  allowEntry: boolean;
+  isTerminal: boolean;
+}
+
 export interface BoardConfig {
   name: string;
   createdAt: string;
+  schemaVersion: number;
+  columns: ColumnConfig[];
 }
 
 // Input-Typen fuer Operationen
@@ -83,14 +99,6 @@ export interface TaskRow {
   position: number;
 }
 
-export interface ColumnRow {
-  id: string;
-  name: string;
-  position: number;
-  wip_limit: number;
-  is_terminal: number;
-}
-
 // Hilfsfunktionen: DB-Row -> Domain-Objekt
 
 export function rowToTask(row: TaskRow): Task {
@@ -110,12 +118,106 @@ export function rowToTask(row: TaskRow): Task {
   };
 }
 
-export function rowToColumn(row: ColumnRow): Column {
+// Validiert eine rohe config.json-Struktur und liefert eine typsichere BoardConfig.
+// Wirft bei jedem Fehler eine verstaendliche Meldung auf Deutsch — der Pfad zur
+// Datei wird hier bewusst NICHT ergaenzt (validateBoardConfig kennt den Pfad
+// nicht), das macht der Aufrufer (siehe loadBoardConfig in db.ts).
+export function validateBoardConfig(raw: unknown): BoardConfig {
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error("config.json: Inhalt ist kein Objekt");
+  }
+  const obj = raw as Record<string, unknown>;
+
+  if (typeof obj.name !== "string") {
+    throw new Error("config.json: Feld 'name' fehlt oder ist kein String");
+  }
+  if (typeof obj.createdAt !== "string") {
+    throw new Error("config.json: Feld 'createdAt' fehlt oder ist kein String");
+  }
+  if (typeof obj.schemaVersion !== "number") {
+    throw new Error("config.json: Feld 'schemaVersion' fehlt oder ist keine Zahl");
+  }
+  if (!Array.isArray(obj.columns)) {
+    throw new Error("config.json: Feld 'columns' fehlt oder ist kein Array");
+  }
+  if (obj.columns.length === 0) {
+    throw new Error("config.json: 'columns' ist leer — mindestens eine Spalte noetig");
+  }
+
+  const columns: ColumnConfig[] = obj.columns.map((rawCol, index) =>
+    validateColumnConfig(rawCol, index),
+  );
+
+  const ids = new Set<string>();
+  for (const col of columns) {
+    if (ids.has(col.id)) {
+      throw new Error(`config.json: doppelte Spalten-id '${col.id}'`);
+    }
+    ids.add(col.id);
+  }
+
+  const terminalColumns = columns.filter((c) => c.isTerminal);
+  if (terminalColumns.length === 0) {
+    throw new Error("config.json: keine Spalte mit isTerminal: true — es muss genau eine geben");
+  }
+  if (terminalColumns.length > 1) {
+    const names = terminalColumns.map((c) => c.id).join(", ");
+    throw new Error(
+      `config.json: mehrere Spalten mit isTerminal: true (${names}) — es darf genau eine geben`,
+    );
+  }
+
+  if (!columns.some((c) => c.allowEntry)) {
+    throw new Error(
+      "config.json: keine Spalte mit allowEntry: true — mindestens eine Eintrittsspalte noetig",
+    );
+  }
+
   return {
-    id: row.id,
-    name: row.name,
-    position: row.position,
-    wipLimit: row.wip_limit,
-    isTerminal: row.is_terminal === 1,
+    name: obj.name,
+    createdAt: obj.createdAt,
+    schemaVersion: obj.schemaVersion,
+    columns,
+  };
+}
+
+// Validiert ein einzelnes rohes Spaltenobjekt aus config.json.
+function validateColumnConfig(raw: unknown, index: number): ColumnConfig {
+  if (typeof raw !== "object" || raw === null) {
+    throw new Error(`config.json: Spalte an Index ${index} ist kein Objekt`);
+  }
+  const col = raw as Record<string, unknown>;
+
+  if (typeof col.id !== "string" || col.id.length === 0) {
+    throw new Error(`config.json: Spalte an Index ${index} hat keine gueltige 'id'`);
+  }
+  if (typeof col.name !== "string" || col.name.length === 0) {
+    throw new Error(`config.json: Spalte '${col.id}' hat keinen gueltigen 'name'`);
+  }
+  if (typeof col.wipLimit !== "number") {
+    throw new Error(`config.json: Spalte '${col.id}' hat kein gueltiges 'wipLimit'`);
+  }
+  if (typeof col.allowEntry !== "boolean") {
+    throw new Error(`config.json: Spalte '${col.id}' hat kein gueltiges 'allowEntry'`);
+  }
+  if (typeof col.isTerminal !== "boolean") {
+    throw new Error(`config.json: Spalte '${col.id}' hat kein gueltiges 'isTerminal'`);
+  }
+  // 'position' entfaellt bewusst (ADR 0001) — die Array-Reihenfolge ist die Ordnung.
+  // Ein vorhandenes Feld in der Datei ist ein Fehler, kein ignoriertes Extra, sonst
+  // glaubt jemand, es haette eine Wirkung.
+  if ("position" in col) {
+    throw new Error(
+      `config.json: Spalte '${col.id}' enthaelt ein 'position'-Feld — die Reihenfolge ` +
+      "im Array ist die Position, ein eigenes Feld wird ignoriert und ist deshalb ein Fehler",
+    );
+  }
+
+  return {
+    id: col.id,
+    name: col.name,
+    wipLimit: col.wipLimit,
+    allowEntry: col.allowEntry,
+    isTerminal: col.isTerminal,
   };
 }

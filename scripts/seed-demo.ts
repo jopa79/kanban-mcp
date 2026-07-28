@@ -4,11 +4,10 @@
 
 import { join } from "node:path";
 import { rmSync, existsSync } from "node:fs";
-import { initBoard } from "../src/core/db";
+import { initBoard, openDb, loadBoardConfig } from "../src/core/db";
 import { BoardService } from "../src/core/board-service";
 import { TaskService } from "../src/core/task-service";
 import { NotesService } from "../src/core/notes-service";
-import { openDb } from "../src/core/db";
 
 const PROJECT_DIR = join(import.meta.dir, "..");
 const kanbanPath = join(PROJECT_DIR, ".kanban");
@@ -27,7 +26,8 @@ initBoard(PROJECT_DIR, "kanban-mcp Demo");
 const dbPath = join(PROJECT_DIR, ".kanban", "board.db");
 const kanbanDir = join(PROJECT_DIR, ".kanban");
 const db = openDb(dbPath);
-const boardService = new BoardService(db);
+const config = loadBoardConfig(join(kanbanDir, "config.json"));
+const boardService = new BoardService(db, config);
 const notesService = new NotesService(kanbanDir);
 const taskService = new TaskService(db, boardService, notesService);
 

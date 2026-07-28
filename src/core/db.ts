@@ -1,21 +1,25 @@
 // SQLite Datenbank Setup und Migration
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { BoardConfig } from "./types.ts";
+import type { BoardConfig, ColumnConfig } from "./types.ts";
+import { validateBoardConfig } from "./types.ts";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
-// Default-Spalten fuer ein neues Board
-const DEFAULT_COLUMNS = [
-  { id: "backlog", name: "Backlog", position: 0, wipLimit: 0, isTerminal: false },
-  { id: "todo", name: "Todo", position: 1, wipLimit: 0, isTerminal: false },
-  { id: "in-progress", name: "In Progress", position: 2, wipLimit: 3, isTerminal: false },
-  { id: "review", name: "Review", position: 3, wipLimit: 0, isTerminal: false },
-  { id: "done", name: "Done", position: 4, wipLimit: 0, isTerminal: true },
+// Default-Spalten fuer ein neues Board — leben seit Schema v3 in config.json,
+// nicht mehr in der DB (ADR 0001). Kein 'position': die Array-Reihenfolge ist
+// die Reihenfolge. 'allowEntry' nur fuer Backlog/Todo — 'done' bewusst false,
+// sonst waere die addTask-Hintertuer zur Terminal-Spalte offen.
+const DEFAULT_COLUMNS: ColumnConfig[] = [
+  { id: "backlog", name: "Backlog", wipLimit: 0, allowEntry: true, isTerminal: false },
+  { id: "todo", name: "Todo", wipLimit: 0, allowEntry: true, isTerminal: false },
+  { id: "in-progress", name: "In Progress", wipLimit: 3, allowEntry: false, isTerminal: false },
+  { id: "review", name: "Review", wipLimit: 0, allowEntry: false, isTerminal: false },
+  { id: "done", name: "Done", wipLimit: 0, allowEntry: false, isTerminal: true },
 ];
 
-// Datenbank oeffnen, migrieren falls noetig
+// Datenbank oeffnen
 export function openDb(dbPath: string): Database {
   const db = new Database(dbPath);
   // busy_timeout zuerst — damit nachfolgende Operationen bei konkurrierenden Zugriffen warten
@@ -27,39 +31,31 @@ export function openDb(dbPath: string): Database {
   }
   // foreign_keys muss pro Connection gesetzt werden (nicht persistent)
   db.run("PRAGMA foreign_keys = ON");
-  migrateDb(db);
+  assertSchemaNotStale(db, dbPath);
   return db;
 }
 
-// Migrationen ausfuehren (idempotent)
-function migrateDb(db: Database): void {
-  // Pruefen ob schema_version Tabelle existiert (neue DB hat sie noch nicht)
+// Notbremse (P0-1, vorlaeufig): migrateDb() lief frueher unbeaufsichtigt in jedem
+// openDb() mit — das entfaellt, Migration ist jetzt explizit ueber 'kanban migrate'
+// (P0-4). Damit zwischen diesem Task und dem umfassenden Schema-Guard aus P0-5
+// niemand ein bestehendes v2-Board still mit v3-Code oeffnet, bricht das Oeffnen
+// hier hart ab, wenn die Schema-Version veraltet ist. Eine neue, noch leere DB
+// (keine schema_version-Tabelle) ist kein Fehlerfall — createSchema() legt sie
+// gleich an. P0-5 ersetzt diesen Block durch den vollstaendigeren Guard.
+function assertSchemaNotStale(db: Database, dbPath: string): void {
   const tableExists = db.query(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
   ).get();
-  if (!tableExists) return; // Neue DB — Schema wird spaeter von createSchema erstellt
+  if (!tableExists) return; // Neue DB — Schema wird gleich von createSchema erstellt
 
   const row = db.query("SELECT version FROM schema_version").get() as { version: number } | null;
   const currentVersion = row?.version ?? 0;
-
-  // v1 → v2: position-Feld fuer Task-Reihenfolge
-  if (currentVersion < 2) {
-    // Pruefen ob Spalte schon existiert (Sicherheit)
-    const cols = db.query("PRAGMA table_info(tasks)").all() as Array<{ name: string }>;
-    if (!cols.some(c => c.name === "position")) {
-      db.run("ALTER TABLE tasks ADD COLUMN position INTEGER DEFAULT 0");
-      // Bestehende Tasks: Position nach created_at setzen
-      db.run(`
-        UPDATE tasks SET position = (
-          SELECT COUNT(*) FROM tasks t2
-          WHERE t2.column_id = tasks.column_id
-            AND t2.created_at <= tasks.created_at
-            AND t2.id != tasks.id
-        )
-      `);
-      db.run("CREATE INDEX IF NOT EXISTS idx_tasks_position ON tasks(column_id, position)");
-    }
-    db.run(`UPDATE schema_version SET version = 2`);
+  if (currentVersion < SCHEMA_VERSION) {
+    throw new Error(
+      `Board-Schema ist Version ${currentVersion}, benoetigt wird ${SCHEMA_VERSION}.\n` +
+      `Datei: ${dbPath}\n` +
+      `Fuehre 'kanban migrate' aus. Ein Backup wird dabei automatisch angelegt.`
+    );
   }
 }
 
@@ -71,22 +67,16 @@ export function createSchema(db: Database): void {
     )
   `);
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS columns (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      position INTEGER NOT NULL,
-      wip_limit INTEGER DEFAULT 0,
-      is_terminal INTEGER DEFAULT 0
-    )
-  `);
-
+  // 'column_id' hat seit Schema v3 bewusst KEINEN Fremdschluessel mehr —
+  // Spalten leben in config.json, nicht mehr in der DB (ADR 0001). Ein Task
+  // kann damit auf eine Spalte zeigen, die in der Config fehlt (Waisen-Fall,
+  // siehe getOrphanColumnIds in board-service.ts); das ist gewollt, kein Bug.
   db.run(`
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       description TEXT,
-      column_id TEXT NOT NULL REFERENCES columns(id),
+      column_id TEXT NOT NULL,
       created_by TEXT DEFAULT 'user',
       assigned_to TEXT,
       labels TEXT,
@@ -117,17 +107,6 @@ export function createSchema(db: Database): void {
   }
 }
 
-// Default-Spalten einfuegen
-export function seedColumns(db: Database): void {
-  const insertCol = db.prepare(
-    "INSERT OR IGNORE INTO columns (id, name, position, wip_limit, is_terminal) VALUES (?, ?, ?, ?, ?)"
-  );
-
-  for (const col of DEFAULT_COLUMNS) {
-    insertCol.run(col.id, col.name, col.position, col.wipLimit, col.isTerminal ? 1 : 0);
-  }
-}
-
 // Board initialisieren: .kanban/ Ordner + DB + Config
 export function initBoard(projectDir: string, boardName: string): string {
   const kanbanDir = join(projectDir, ".kanban");
@@ -141,20 +120,47 @@ export function initBoard(projectDir: string, boardName: string): string {
   // Ordner erstellen
   mkdirSync(kanbanDir, { recursive: true });
 
-  // Config schreiben
+  // Config schreiben — Spalten leben seit Schema v3 in config.json, nicht mehr
+  // in der DB (ADR 0001). Kein separates seedColumns() mehr noetig.
   const config: BoardConfig = {
     name: boardName,
     createdAt: new Date().toISOString(),
+    schemaVersion: SCHEMA_VERSION,
+    columns: DEFAULT_COLUMNS,
   };
   writeFileSync(configPath, JSON.stringify(config, null, 2));
 
-  // DB erstellen und Schema + Spalten anlegen
+  // DB erstellen und Schema anlegen
   const db = openDb(dbPath);
   createSchema(db);
-  seedColumns(db);
   db.close();
 
   return kanbanDir;
+}
+
+// Config von Platte laden und validieren. Fehlermeldung nennt Pfad und Grund,
+// kein Stacktrace — verstaendlich fuer CLI-Nutzer und Agents gleichermassen.
+export function loadBoardConfig(configPath: string): BoardConfig {
+  let raw: string;
+  try {
+    raw = readFileSync(configPath, "utf-8");
+  } catch {
+    throw new Error(`config.json nicht lesbar. Datei: ${configPath}`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`config.json ist kein gueltiges JSON. Datei: ${configPath}`);
+  }
+
+  try {
+    return validateBoardConfig(parsed);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(`${reason}\nDatei: ${configPath}`);
+  }
 }
 
 // Prueft ob ein Board im Verzeichnis existiert

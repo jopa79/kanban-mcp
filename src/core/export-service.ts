@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { $ } from "bun";
-import { openDb, createSchema, boardExists, getBoardPaths } from "./db.ts";
+import { openDb, createSchema, boardExists, getBoardPaths, loadBoardConfig } from "./db.ts";
 import { BoardService } from "./board-service.ts";
 import { TaskService } from "./task-service.ts";
 import { NotesService } from "./notes-service.ts";
@@ -28,8 +28,8 @@ export async function exportBoard(workingDir: string, outputPath?: string): Prom
 
   const paths = getBoardPaths(workingDir);
   const db = openDb(paths.dbPath);
-  const config: BoardConfig = JSON.parse(readFileSync(paths.configPath, "utf-8"));
-  const boardService = new BoardService(db);
+  const config: BoardConfig = loadBoardConfig(paths.configPath);
+  const boardService = new BoardService(db, config);
   const notesService = new NotesService(paths.kanbanDir);
   const taskService = new TaskService(db, boardService, notesService);
 
