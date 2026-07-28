@@ -42,3 +42,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Claude Code: lokale, maschinenspezifische Einstellungen
 # Plaene unter .claude/plans/ werden bewusst versioniert
 .claude/settings.local.json
+
+# Claude Code: temporaere Arbeitsverzeichnisse paralleler Agents
+.claude/worktrees/
+
+# devpulse
+.devpulse/
