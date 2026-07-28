@@ -12,6 +12,10 @@ export interface Column {
   isTerminal: boolean;
 }
 
+// Prioritaet eines Tasks — echte, sortierbare Spalte seit Schema v3 (Paket 0).
+// Durchreichen ueber CLI/MCP/TUI kommt erst in Paket 2 (Metadaten).
+export type TaskPriority = "high" | "medium" | "low";
+
 export interface Task {
   id: string;
   title: string;
@@ -25,6 +29,8 @@ export interface Task {
   archived: boolean;
   version: number;
   position: number;
+  priority: TaskPriority | null;
+  dueDate: string | null;
   notes?: string | null;
   hasNotes?: boolean;
   isBlocked?: boolean;
@@ -97,6 +103,8 @@ export interface TaskRow {
   archived: number;
   version: number;
   position: number;
+  priority: string | null;
+  due_date: string | null;
 }
 
 // Hilfsfunktionen: DB-Row -> Domain-Objekt
@@ -115,6 +123,46 @@ export function rowToTask(row: TaskRow): Task {
     archived: row.archived === 1,
     version: row.version,
     position: row.position ?? 0,
+    priority: (row.priority as TaskPriority | null) ?? null,
+    dueDate: row.due_date ?? null,
+  };
+}
+
+// Zustandsuebergang eines Tasks (Schema v3, Paket 0). Wird ab Paket 1
+// (transition-service.ts) befuellt — hier nur Typ und Row-Mapping, analog zu
+// Task/TaskRow/rowToTask. Siehe Plan Abschnitt 2.1 und Kanban-Task N8-B1V7SnbFx.
+export interface Transition {
+  id: number;
+  taskId: string;
+  fromColumn: string | null; // NULL = Task-Entstehung
+  toColumn: string;
+  reportedBy: string;
+  reason: string | null;
+  wasOverride: boolean;
+  createdAt: string;
+}
+
+export interface TransitionRow {
+  id: number;
+  task_id: string;
+  from_column: string | null;
+  to_column: string;
+  reported_by: string;
+  reason: string | null;
+  was_override: number;
+  created_at: string;
+}
+
+export function rowToTransition(row: TransitionRow): Transition {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    fromColumn: row.from_column,
+    toColumn: row.to_column,
+    reportedBy: row.reported_by,
+    reason: row.reason,
+    wasOverride: row.was_override === 1,
+    createdAt: row.created_at,
   };
 }
 

@@ -22,6 +22,38 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   - `BoardService.getOrphanColumnIds()` — findet Tasks, deren Spalte in
     `config.json` fehlt (Grundlage fuer die Waisen-Behandlung in einem
     Folge-Task; wird aktuell nur ermittelt, noch nicht in TUI/CLI angezeigt)
+- Schema v3: `transitions`-Tabelle (Zustandshistorie eines Tasks, wird ab
+  Paket 1 befuellt) sowie `priority`/`due_date`-Spalten auf `tasks` (echte,
+  sortierbare Felder; Durchreichen an CLI/MCP/TUI folgt in Paket 2)
+  - `Transition`/`TransitionRow`-Typen und `rowToTransition()` in `types.ts`,
+    analog zu `Task`/`TaskRow`/`rowToTask`
+  - Bewusst **kein** `source_id` und kein `updated_by` auf `tasks` — siehe
+    Plan Abschnitt 0.1 (TodoWrite liefert kein `id`-Feld) und Entscheidung K-3
+  - `tasks`-Spalten-DDL und Index-/Transitions-Erzeugung sind jetzt geteilte
+    Bausteine (`TASKS_TABLE_COLUMNS_DDL`, `createTaskIndexes()`,
+    `createTransitionsTable()` in `db.ts`) — verhindert Schema-Drift zwischen
+    neu angelegten und migrierten Boards
+- `kanban migrate [--dry-run] [--yes]` — explizites Kommando fuer die
+  Schema-Migration v2 auf v3 (ADR 0001, `src/core/migrate-v3.ts`)
+  - Backup vor jeder Migration per `VACUUM INTO` nach `board.db.bak-v2`
+    (WAL-sicher — eine reine Datei-Kopie waere bei offenen Transaktionen
+    unvollstaendig); ein bestehendes Backup wird nie ueberschrieben, sondern
+    als `board.db.bak-v2.<timestamp>` ergaenzt
+  - Spalten werden aus der `columns`-Tabelle nach `config.json` uebersetzt:
+    nach `position` sortiert, Array-Reihenfolge ersetzt das Feld (auch bei
+    lueckenhaften Werten); die ersten beiden Spalten werden Eintrittsspalten
+  - `config.json` wird atomar geschrieben (tmp-Datei + fsync + rename) und vor
+    dem DB-Umbau zurueckgelesen und verifiziert — bei Abweichung bricht die
+    Migration ab, ohne die DB anzufassen
+  - `tasks` wird ohne `columns`-Fremdschluessel neu aufgebaut
+    (`PRAGMA foreign_keys = OFF` waehrend des Tabellen-Neubaus, sonst
+    kaskadiert `DROP TABLE tasks` die komplette `dependencies`-Tabelle weg);
+    Nachpruefung per Zeilenzahl-Vergleich und `PRAGMA foreign_key_check`
+  - Wiederaufsetzbar: bricht ein Lauf nach dem Schreiben von `config.json` ab,
+    erkennt der naechste Lauf das und ueberspringt den Schreibschritt
+  - Verifiziert gegen eine Kopie des echten Projekt-Boards (44 Tasks,
+    49 Dependencies, 1 archivierter Task) — alle Zahlen nach der Migration
+    identisch, `PRAGMA foreign_key_check` liefert nichts
 - Board-Registry (`~/.config/kanban/registry.json`, respektiert
   `XDG_CONFIG_HOME`; pfadbasierter Kern von P3-1) — Grundlage fuer das
   kommende `kanban boards`-Kommando
@@ -69,8 +101,8 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 - DB-Schema-Version 2 → 3. `openDb()` migriert nicht mehr automatisch beim
   Oeffnen (bisheriges `migrateDb()` entfernt) — bei einer aelteren
   Schema-Version bricht das Oeffnen mit Pfad und Hinweis auf `kanban migrate`
-  ab. Das Migrationskommando selbst folgt in einem separaten Task; bis dahin
-  betrifft das nur Boards, die vor diesem Change angelegt wurden
+  ab. Das Migrationskommando existiert jetzt (`kanban migrate`, siehe Added);
+  bis ein Board migriert ist, bleibt es bei diesem Abbruch beim Oeffnen
 - Bekannte Einschraenkung (vorerst): `kanban import` eines v2-ZIP-Archivs
   schreibt Spalten noch in die nicht mehr existierende `columns`-Tabelle und
   schlaegt deshalb aktuell fehl. v2-Import-Kompatibilitaet ist als eigener

@@ -178,6 +178,97 @@ describe("db", () => {
     expect(result.foreign_keys).toBe(1);
   });
 
+  // --- P0-3: transitions-Tabelle, priority/due_date, kein source_id ---
+
+  test("DB hat transitions-Tabelle nach initBoard (P0-3)", () => {
+    const dir = tmpDir();
+    initBoard(dir, "Test");
+    const db = openDb(getBoardPaths(dir).dbPath);
+    const tables = db.query(
+      "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+    ).all() as Array<{ name: string }>;
+    db.close();
+
+    expect(tables.map(t => t.name)).toContain("transitions");
+  });
+
+  test("tasks hat genau priority und due_date als neue Felder, kein source_id (P0-3)", () => {
+    const dir = tmpDir();
+    initBoard(dir, "Test");
+    const db = openDb(getBoardPaths(dir).dbPath);
+    const columns = db.query("PRAGMA table_info(tasks)").all() as Array<{ name: string }>;
+    db.close();
+
+    const names = columns.map(c => c.name);
+    expect(names).toContain("priority");
+    expect(names).toContain("due_date");
+    expect(names).not.toContain("source_id");
+  });
+
+  test("tasks hat kein idx_tasks_source (source_id ist gestrichen, P0-3)", () => {
+    const dir = tmpDir();
+    initBoard(dir, "Test");
+    const db = openDb(getBoardPaths(dir).dbPath);
+    const indexes = db.query(
+      "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='tasks'"
+    ).all() as Array<{ name: string }>;
+    db.close();
+
+    expect(indexes.map(i => i.name)).not.toContain("idx_tasks_source");
+  });
+
+  test("Task loeschen entfernt zugehoerige Transitions (ON DELETE CASCADE, P0-3)", () => {
+    const dir = tmpDir();
+    initBoard(dir, "Test");
+    const db = openDb(getBoardPaths(dir).dbPath);
+    const now = new Date().toISOString();
+
+    db.run(
+      `INSERT INTO tasks (id, title, column_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+      ["task-1", "Test Task", "todo", now, now],
+    );
+    db.run(
+      `INSERT INTO transitions (task_id, from_column, to_column, reported_by, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      ["task-1", null, "todo", "user", now],
+    );
+
+    let count = db.query("SELECT COUNT(*) as c FROM transitions WHERE task_id = ?").get("task-1") as { c: number };
+    expect(count.c).toBe(1);
+
+    db.run("DELETE FROM tasks WHERE id = ?", ["task-1"]);
+
+    count = db.query("SELECT COUNT(*) as c FROM transitions WHERE task_id = ?").get("task-1") as { c: number };
+    expect(count.c).toBe(0);
+
+    db.close();
+  });
+
+  test("PRAGMA foreign_key_check liefert nichts nach initBoard (P0-3)", () => {
+    const dir = tmpDir();
+    initBoard(dir, "Test");
+    const db = openDb(getBoardPaths(dir).dbPath);
+    const now = new Date().toISOString();
+    db.run(
+      `INSERT INTO tasks (id, title, column_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+      ["task-1", "Test Task", "todo", now, now],
+    );
+    db.run(
+      `INSERT INTO transitions (task_id, from_column, to_column, reported_by, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      ["task-1", null, "todo", "user", now],
+    );
+    db.run(
+      `INSERT INTO dependencies (task_id, depends_on_id) VALUES (?, ?)`,
+      ["task-1", "task-1"],
+    );
+
+    const violations = db.query("PRAGMA foreign_key_check").all();
+    db.close();
+
+    expect(violations).toEqual([]);
+  });
+
   test("WAL wird nicht unnoetig neu gesetzt wenn bereits aktiv", () => {
     const dir = tmpDir();
     initBoard(dir, "Test");

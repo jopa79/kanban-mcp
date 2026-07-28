@@ -59,6 +59,59 @@ function assertSchemaNotStale(db: Database, dbPath: string): void {
   }
 }
 
+// Spalten-Definition der 'tasks'-Tabelle als Fragment — geteilt zwischen
+// createSchema() (neue Boards) und migrate-v3.ts (migrierte v2-Boards), damit
+// beide Entstehungswege garantiert dasselbe Schema erzeugen (kein Drift).
+// 'column_id' hat seit Schema v3 bewusst KEINEN Fremdschluessel mehr — Spalten
+// leben in config.json, nicht mehr in der DB (ADR 0001). Ein Task kann damit
+// auf eine Spalte zeigen, die in der Config fehlt (Waisen-Fall, siehe
+// getOrphanColumnIds in board-service.ts); das ist gewollt, kein Bug.
+// 'priority'/'due_date': echte Spalten seit Paket 0, Durchreichen an
+// CLI/MCP/TUI folgt in Paket 2. Kein 'source_id' — siehe Plan Abschnitt 0.1.
+export const TASKS_TABLE_COLUMNS_DDL = `
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    column_id TEXT NOT NULL,
+    created_by TEXT DEFAULT 'user',
+    assigned_to TEXT,
+    labels TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    archived INTEGER DEFAULT 0,
+    version INTEGER DEFAULT 1,
+    position INTEGER DEFAULT 0,
+    priority TEXT,
+    due_date TEXT
+`;
+
+// Indizes der 'tasks'-Tabelle — ebenfalls geteilt (s.o.). Bewusst KEIN
+// idx_tasks_source: 'source_id' ist gestrichen (Plan Abschnitt 0.1).
+export function createTaskIndexes(db: Database): void {
+  db.run("CREATE INDEX IF NOT EXISTS idx_tasks_column ON tasks(column_id)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_tasks_archived ON tasks(archived)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_tasks_position ON tasks(column_id, position)");
+}
+
+// 'transitions'-Tabelle + Index — geteilt zwischen createSchema() und
+// migrate-v3.ts. 'ON DELETE CASCADE': foreign_keys ist pro Connection aktiv
+// (siehe openDb), ein geloeschter Task nimmt seine Historie mit. Gewollt.
+export function createTransitionsTable(db: Database): void {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS transitions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      from_column TEXT,
+      to_column TEXT NOT NULL,
+      reported_by TEXT NOT NULL DEFAULT 'user',
+      reason TEXT,
+      was_override INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    )
+  `);
+  db.run("CREATE INDEX IF NOT EXISTS idx_transitions_task ON transitions(task_id, created_at)");
+}
+
 // Schema erstellen (nur bei neuer DB)
 export function createSchema(db: Database): void {
   db.run(`
@@ -67,26 +120,7 @@ export function createSchema(db: Database): void {
     )
   `);
 
-  // 'column_id' hat seit Schema v3 bewusst KEINEN Fremdschluessel mehr —
-  // Spalten leben in config.json, nicht mehr in der DB (ADR 0001). Ein Task
-  // kann damit auf eine Spalte zeigen, die in der Config fehlt (Waisen-Fall,
-  // siehe getOrphanColumnIds in board-service.ts); das ist gewollt, kein Bug.
-  db.run(`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      description TEXT,
-      column_id TEXT NOT NULL,
-      created_by TEXT DEFAULT 'user',
-      assigned_to TEXT,
-      labels TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      archived INTEGER DEFAULT 0,
-      version INTEGER DEFAULT 1,
-      position INTEGER DEFAULT 0
-    )
-  `);
+  db.run(`CREATE TABLE IF NOT EXISTS tasks (${TASKS_TABLE_COLUMNS_DDL})`);
 
   db.run(`
     CREATE TABLE IF NOT EXISTS dependencies (
@@ -96,9 +130,8 @@ export function createSchema(db: Database): void {
     )
   `);
 
-  db.run("CREATE INDEX IF NOT EXISTS idx_tasks_column ON tasks(column_id)");
-  db.run("CREATE INDEX IF NOT EXISTS idx_tasks_archived ON tasks(archived)");
-  db.run("CREATE INDEX IF NOT EXISTS idx_tasks_position ON tasks(column_id, position)");
+  createTaskIndexes(db);
+  createTransitionsTable(db);
 
   // Schema-Version setzen
   const versionRow = db.query("SELECT version FROM schema_version").get();
