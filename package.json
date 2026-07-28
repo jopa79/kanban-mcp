@@ -5,6 +5,7 @@
   "module": "src/index.ts",
   "type": "module",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun --external react-devtools-core",
