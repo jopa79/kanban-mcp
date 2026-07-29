@@ -108,6 +108,35 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   - MCP `kanban_get_task` liefert Notes-Inhalt mit
   - TUI: Notes-Anzeige in Detail-Ansicht, `e` zum Editieren, `[N]`-Indikator auf Task-Karten
   - `hasNotes` Flag bei `listTasks` (Performance: kein Datei-Inhalt laden)
+- `TransitionService` (`src/core/transition-service.ts`, P1-1) — Zustandsmaschine
+  fuer Spaltenuebergaenge: Regeln pruefen, Pfade berechnen, Transitions
+  protokollieren. Eigenstaendig und getestet, **noch nicht** an `TaskService`
+  angebunden (`addTask`/`moveTask`/`completeTask` folgen in P1-2)
+  - Kettenregel `zielIndex <= quellIndex + 1` wird aus dem Array-Index von
+    `boardService.getColumns()` abgeleitet, nicht aus einer hartkodierten
+    Matrix — Rueckspruenge beliebiger Weite und `zielIndex == quellIndex`
+    (no-op) sind immer erlaubt. Ein Board mit 3 oder 7 Spalten oder
+    umsortierten Spalten braucht dafuer keine Codeaenderung
+  - `canMove()` prueft zusaetzlich das WIP-Limit der Zielspalte
+    (`wipLimit: 0` = unbegrenzt) — das Feld wird damit erstmals durchgesetzt
+    statt nur eingefaerbt (TUI-Anzeige in `board-view.tsx`)
+  - `canEnter()` prueft `allowEntry`; `canComplete()` leitet die geforderte
+    Vorspalte aus dem Index der Terminal-Spalte ab (nicht auf `"review"`
+    hartkodiert)
+  - Ablehnungstexte sind handlungsleitend (ADR 0002 — kein `force` in
+    MCP-Tools, die Ablehnung selbst muss den naechsten Schritt zeigen): sie
+    nennen Task, aktuelle und Zielspalte, bei vollem WIP-Limit alle
+    blockierenden Tasks samt Wartezeit ("blockiert seit", aus
+    `transitions.created_at`, Fallback `tasks.updated_at`) und immer den
+    naechsten gueltigen Schritt
+  - `reconcilePath()` berechnet Zwischenspalten ohne Regelpruefung —
+    ausschliesslich fuer den Sync vorgesehen (P1-7); anderswo verwendet
+    wuerde jeder `kanban done` automatisch durch Review durchlaufen
+  - `log()`/`history()` schreiben bzw. lesen die `transitions`-Tabelle
+    (inkl. `was_override`)
+  - 30 neue Tests (`tests/transition-service.test.ts`) — u.a. belegen Boards
+    mit 3 und 7 Spalten sowie eine umsortierte `config.json`, dass die Regel
+    wirklich abgeleitet und nicht hartkodiert ist
 
 ### Removed
 
