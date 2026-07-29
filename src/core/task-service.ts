@@ -2,7 +2,7 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { nanoid } from "nanoid";
 import type { BoardService } from "./board-service.ts";
-import { ArchiveService } from "./archive-service.ts";
+import { DependencyService } from "./dependency-service.ts";
 import type {
   AddTaskCheckedResult,
   AddTaskInput,
@@ -28,8 +28,10 @@ function todayLocalIso(): string {
   return `${year}-${month}-${day}`;
 }
 
-// TaskService erbt Archiv-Funktionen von ArchiveService
-export class TaskService extends ArchiveService {
+// TaskService erbt Archiv-Funktionen (ArchiveService) und Dependency-
+// Verwaltung (DependencyService, Refactoring hs_Zn8_sXJia) ueber die
+// Vererbungskette.
+export class TaskService extends DependencyService {
 
   // Neuen Task erstellen
   addTask(input: AddTaskInput): Task {
@@ -435,51 +437,6 @@ export class TaskService extends ArchiveService {
       reason: null,
       wasOverride: false,
     });
-  }
-
-  // Abhaengigkeiten: Tasks die diesen Task blockieren
-  getDependencies(taskId: string): Task[] {
-    const rows = this.db
-      .query(`SELECT t.* FROM tasks t JOIN dependencies d ON t.id = d.depends_on_id WHERE d.task_id = ?`)
-      .all(taskId) as TaskRow[];
-    return rows.map(rowToTask);
-  }
-
-  // Abhaengigkeiten: Tasks die von diesem Task abhaengen
-  getDependents(taskId: string): Task[] {
-    const rows = this.db
-      .query(`SELECT t.* FROM tasks t JOIN dependencies d ON t.id = d.task_id WHERE d.depends_on_id = ?`)
-      .all(taskId) as TaskRow[];
-    return rows.map(rowToTask);
-  }
-
-  // Neue Abhaengigkeit anlegen
-  addDependency(taskId: string, dependsOnId: string): void {
-    const task = this.getTask(taskId);
-    if (!task) throw new Error(`Task '${taskId}' nicht gefunden`);
-    const dep = this.getTask(dependsOnId);
-    if (!dep) throw new Error(`Task '${dependsOnId}' nicht gefunden`);
-    if (taskId === dep.id) throw new Error("Task kann nicht von sich selbst abhaengen");
-    this.db.run(
-      "INSERT OR IGNORE INTO dependencies (task_id, depends_on_id) VALUES (?, ?)",
-      [task.id, dep.id],
-    );
-  }
-
-  // Abhaengigkeit entfernen
-  removeDependency(taskId: string, dependsOnId: string): void {
-    this.db.run(
-      "DELETE FROM dependencies WHERE task_id = ? AND depends_on_id = ?",
-      [taskId, dependsOnId],
-    );
-  }
-
-  // Pruefen ob Task blockiert ist (mind. eine Abhaengigkeit nicht in Terminal-Spalte)
-  isBlocked(taskId: string): boolean {
-    const terminal = this.boardService.getTerminalColumn();
-    if (!terminal) return false;
-    const deps = this.getDependencies(taskId);
-    return deps.some(d => d.columnId !== terminal.id && !d.archived);
   }
 
   // Pruefen ob ein Task ueberfaellig ist: dueDate < heute && !archived &&
