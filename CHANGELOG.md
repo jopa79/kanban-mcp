@@ -109,6 +109,18 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   - TUI: Notes-Anzeige in Detail-Ansicht, `e` zum Editieren, `[N]`-Indikator auf Task-Karten
   - `hasNotes` Flag bei `listTasks` (Performance: kein Datei-Inhalt laden)
 
+### Removed
+
+- `plugins/ralph-tracker` — das Tracker-Plugin fuer [Ralph TUI](https://github.com/subsy/ralph-tui)
+  ist ersatzlos entfernt, samt seiner deployten Kopie unter
+  `~/.config/ralph-tui/plugins/trackers/`
+  - Damit entfaellt der einzige externe Konsument von `kanban status --json`
+    und `kanban list --json`. Das Ausgabeformat dieser beiden Kommandos ist
+    kein Vertrag mehr gegenueber Dritten
+  - Die Testsuite ist dadurch wieder vollstaendig gruen: der Test des Plugins
+    rief das global installierte `/opt/homebrew/bin/kanban` auf, einen Wrapper
+    auf ein **anderes** Repository, und schlug seit Laengerem sporadisch fehl
+
 ### Changed
 
 - `BoardService` liest Spalten jetzt aus `config.json` statt per SQL aus der
