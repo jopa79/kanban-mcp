@@ -10,11 +10,12 @@ import { HelpView } from "./help-view.tsx";
 import { AddInput, FilterInput, TitleInput, DescInput, DeleteConfirm, ExportInput, ImportInput, ImportConfirm, OverrideConfirm, StatusBar } from "./status-bar.tsx";
 import { TextArea } from "./text-area.tsx";
 import { TagPicker } from "./tag-picker.tsx";
+import { PriorityPicker } from "./priority-picker.tsx";
 import { ArchiveView } from "./archive-view.tsx";
 import { DependencyView } from "./dependency-view.tsx";
-import { useBoard, isOrphanTask } from "./use-board.ts";
+import { useBoard, isOrphanTask, resolveEffectiveSort } from "./use-board.ts";
 import { useInputModes, type Mode, type PendingOverride } from "./use-input-modes.ts";
-import { getColumnColor, ACCENT, ORPHAN_COLUMN_ID } from "./theme.ts";
+import { getColumnColor, getPriorityLabel, ACCENT, ORPHAN_COLUMN_ID } from "./theme.ts";
 
 interface AppProps {
   workingDir: string;
@@ -22,7 +23,6 @@ interface AppProps {
 
 export function App({ workingDir }: AppProps) {
   const { exit } = useApp();
-  const board = useBoard(workingDir);
   const [mode, setMode] = useState<Mode>("board");
   const [selectedCol, setSelectedCol] = useState(1);
   const [selectedRow, setSelectedRow] = useState(0);
@@ -34,6 +34,12 @@ export function App({ workingDir }: AppProps) {
   const [moving, setMoving] = useState(false);
   const [importPath, setImportPath] = useState("");
   const [pendingOverride, setPendingOverride] = useState<PendingOverride | null>(null);
+  // P2-3 (K-2, Anschlussfrage 2): reiner Ansichtsmodus, schreibt nie 'position'.
+  // Muss VOR dem useBoard()-Aufruf stehen, damit 'moving' zur Berechnung von
+  // effectiveSort bereits verfuegbar ist (siehe resolveEffectiveSort).
+  const [sortByPriority, setSortByPriority] = useState(false);
+  const effectiveSort = resolveEffectiveSort(sortByPriority, moving);
+  const board = useBoard(workingDir, effectiveSort);
 
   // Terminal-Hoehe tracken fuer festes Layout
   const { stdout } = useStdout();
@@ -88,6 +94,7 @@ export function App({ workingDir }: AppProps) {
     pendingOverride,
     selectedTask,
     currentColTaskCount: currentColTasks.length,
+    sortByPriority,
     setMode,
     setStatusMsg,
     setSelectedCol,
@@ -98,6 +105,7 @@ export function App({ workingDir }: AppProps) {
     setInputValue,
     setPendingOverride,
     setArchivedTasks,
+    setSortByPriority,
   });
 
   if (!boardExists(workingDir)) {
@@ -141,6 +149,21 @@ export function App({ workingDir }: AppProps) {
     setStatusMsg("");
   };
 
+  const handlePrioritySave = (priority: import("../core/types.ts").TaskPriority | null) => {
+    if (detailTask) {
+      board.updateTask(detailTask.id, { priority });
+      const refreshed = board.getTask(detailTask.id);
+      if (refreshed) setDetailTask(refreshed);
+      setStatusMsg(`Prioritaet: ${getPriorityLabel(priority)}`);
+    }
+    setMode("detail");
+  };
+
+  const handlePriorityCancel = () => {
+    setMode("detail");
+    setStatusMsg("");
+  };
+
   const handleTitleSave = (val: string) => {
     if (detailTask && val.trim()) {
       board.updateTask(detailTask.id, { title: val.trim() });
@@ -161,7 +184,7 @@ export function App({ workingDir }: AppProps) {
     setMode("detail");
   };
 
-  const detailModes: Mode[] = ["detail", "edit-notes", "edit-tags", "edit-title", "edit-description", "edit-deps"];
+  const detailModes: Mode[] = ["detail", "edit-notes", "edit-tags", "edit-title", "edit-description", "edit-deps", "edit-priority"];
   if (detailModes.includes(mode) && detailTask) return (
     <Box flexDirection="column">
       <DetailView task={detailTask} />
@@ -177,6 +200,13 @@ export function App({ workingDir }: AppProps) {
           selectedTags={detailTask.labels}
           onSave={handleTagsSave}
           onCancel={handleTagsCancel}
+        />
+      )}
+      {mode === "edit-priority" && (
+        <PriorityPicker
+          selected={detailTask.priority}
+          onSave={handlePrioritySave}
+          onCancel={handlePriorityCancel}
         />
       )}
       {mode === "edit-title" && (
@@ -293,6 +323,10 @@ export function App({ workingDir }: AppProps) {
         <Text bold color={ACCENT.muted}>|</Text>
         <Text color={ACCENT.title}> {board.displayColumns[selectedCol]?.name ?? "Board"} </Text>
         {filterText && <Text color={ACCENT.notes}> [Filter: {filterText}]</Text>}
+        {/* Zeigt nur an, wenn die Sortierung TATSAECHLICH wirkt (effectiveSort),
+            nicht schon bei blossem sortByPriority=true -- verschwindet also von
+            selbst im Verschiebe-Modus, ohne eigenen Text dafuer zu brauchen. */}
+        {effectiveSort === "priority" && <Text color={ACCENT.labels}> [Prioritaet]</Text>}
       </Box>
 
       {/* Board — flexibel, clippt bei Overflow */}

@@ -2,7 +2,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { Task } from "../core/types.ts";
-import { ACCENT, getColumnColor, getTagColor } from "./theme.ts";
+import { ACCENT, getColumnColor, getPriorityColor, getPriorityLabel, getTagColor } from "./theme.ts";
 
 interface DetailViewProps {
   task: Task;
@@ -20,6 +20,18 @@ export function DetailView({ task }: DetailViewProps) {
       <Box>
         <Text color={ACCENT.muted}>Spalte: </Text>
         <Text color={colColor}>{task.columnId}</Text>
+      </Box>
+      <Box>
+        <Text color={ACCENT.muted}>Prioritaet: </Text>
+        <Text color={getPriorityColor(task.priority)}>{getPriorityLabel(task.priority)}</Text>
+      </Box>
+      <Box>
+        <Text color={ACCENT.muted}>Faellig: </Text>
+        <Text color={task.isOverdue ? ACCENT.overdue : ACCENT.title}>{task.dueDate ?? "—"}</Text>
+        {/* isOverdue kommt fertig berechnet vom TaskService (terminal-Spalten
+            sind nie ueberfaellig, siehe TaskService.isOverdue) -- hier nur
+            angezeigt, nicht nachgerechnet. */}
+        {task.isOverdue && <Text color={ACCENT.overdue} bold> (ueberfaellig)</Text>}
       </Box>
       {task.isBlocked && <Text color="#ef4444" bold>BLOCKIERT</Text>}
       <Text color={ACCENT.muted}>Erstellt: {task.createdBy} @ {task.createdAt}</Text>
@@ -48,7 +60,7 @@ export function DetailView({ task }: DetailViewProps) {
         </Box>
       )}
       <Box marginTop={1}>
-        <Text color={ACCENT.muted}>T=Titel  b=Beschreibung (Einzeiler)  e=Notizen (Freitext)  t=Tags  D=Deps  q/Esc=Zurueck</Text>
+        <Text color={ACCENT.muted}>T=Titel  b=Beschreibung (Einzeiler)  p=Prioritaet  e=Notizen (Freitext)  t=Tags  D=Deps  q/Esc=Zurueck</Text>
       </Box>
     </Box>
   );

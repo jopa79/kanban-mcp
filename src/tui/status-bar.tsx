@@ -138,7 +138,7 @@ export function StatusBar({ message }: StatusBarProps) {
   return (
     <Box paddingX={1} justifyContent="space-between">
       <Text color={ACCENT.muted}>
-        ?=Hilfe  n=Neu  Space=Verschieben  /=Filter  t=Todo  d=Done  x=Del  a=Arch.  A=Archiv  E=Export  I=Import  q=Quit
+        ?=Hilfe  n=Neu  Space=Verschieben  /=Filter  t=Todo  d=Done  s=Sortieren  x=Del  a=Arch.  A=Archiv  E=Export  I=Import  q=Quit
       </Text>
       {message && <Text color="#22c55e">{message}</Text>}
     </Box>

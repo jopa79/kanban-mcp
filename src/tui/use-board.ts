@@ -1,7 +1,7 @@
 // Custom Hook: Board-Daten laden und Task-Aktionen ausfuehren
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { watch, type FSWatcher } from "node:fs";
-import type { Column, Task, UpdateTaskInput } from "../core/types.ts";
+import type { Column, ListTasksFilter, Task, UpdateTaskInput } from "../core/types.ts";
 import { openDb, getBoardPaths, loadBoardConfig } from "../core/db.ts";
 import { BoardService } from "../core/board-service.ts";
 import { TaskService } from "../core/task-service.ts";
@@ -69,13 +69,31 @@ function createServices(workingDir: string) {
 // React-Renderer laufen zu lassen -- im Repo gibt es dafuer kein
 // Test-Werkzeug (kein ink-testing-library, keine neue Dependency ohne
 // Ruecksprache).
-export function loadData(workingDir: string) {
+//
+// P2-3: 'options.sort' reicht optional an TaskService.listTasks() durch (die
+// Sortier-Logik selbst lebt dort, buildOrderBy() -- die TUI sortiert nicht
+// nach). Ohne 'options' identisch zum bisherigen Aufruf ohne Filter, also
+// rueckwaertskompatibel zu allen bestehenden Aufrufern.
+export function loadData(workingDir: string, options?: { sort?: ListTasksFilter["sort"] }) {
   const { db, boardService, taskService } = createServices(workingDir);
   const columns = boardService.getColumns();
   const orphanColumnIds = boardService.getOrphanColumnIds();
-  const tasks = taskService.listTasks();
+  const tasks = taskService.listTasks({ sort: options?.sort });
   db.close();
   return { columns, tasks, orphanColumnIds };
+}
+
+// P2-3, Anschlussfrage 2 (K-2): die Prioritaets-Sortierung ist ein reiner
+// Ansichtsmodus und MUSS im Verschiebe-Modus abgeschaltet sein -- sonst
+// springt die Karte unter dem Cursor weg, waehrend man sie mit Pfeiltasten
+// bewegt (reorderTask aendert 'position', die Anzeige wuerde aber weiter nach
+// Prioritaet neu ordnen). Als reine, exportierte Funktion, damit diese harte
+// Bedingung automatisiert nachweisbar ist statt nur manuell in der TUI
+// geprueft zu werden. Prueft NUR 'moving', nicht zusaetzlich den
+// ausgewaehlten Task -- greift also auch dann, wenn waehrend des Verschiebens
+// von aussen (z.B. MCP) Tasks geaendert werden.
+export function resolveEffectiveSort(sortByPriority: boolean, moving: boolean): ListTasksFilter["sort"] {
+  return sortByPriority && !moving ? "priority" : undefined;
 }
 
 // Task-Aktion ausfuehren (oeffnet und schliesst DB selbst). Generisch ueber
@@ -88,7 +106,10 @@ function withServices<T>(workingDir: string, action: (ts: TaskService) => T): T 
   return result;
 }
 
-export function useBoard(workingDir: string) {
+// 'sort' (P2-3): optionaler Ansichtsmodus, vom Aufrufer (app.tsx) ueber
+// resolveEffectiveSort() berechnet -- dieser Hook entscheidet nicht selbst,
+// ob sortiert werden darf (kennt 'moving' nicht), reicht den Wert nur durch.
+export function useBoard(workingDir: string, sort?: ListTasksFilter["sort"]) {
   const [columns, setColumns] = useState<Column[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [orphanColumnIds, setOrphanColumnIds] = useState<string[]>([]);
@@ -96,12 +117,16 @@ export function useBoard(workingDir: string) {
   // kanbanDir fuer Editor-Zugriff
   const kanbanDir = getBoardPaths(workingDir).kanbanDir;
 
+  // 'sort' in den Dependencies: aendert sich der Ansichtsmodus, bekommt
+  // 'refresh' eine neue Identitaet -- der bestehende Effekt in app.tsx
+  // (`useEffect(() => { board.refresh(); }, [board.refresh])`) greift dann
+  // automatisch erneut, ohne dass app.tsx selbst auf 'sort' reagieren muesste.
   const refresh = useCallback(() => {
-    const data = loadData(workingDir);
+    const data = loadData(workingDir, { sort });
     setColumns(data.columns);
     setTasks(data.tasks);
     setOrphanColumnIds(data.orphanColumnIds);
-  }, [workingDir]);
+  }, [workingDir, sort]);
 
   // Anzeige-Spalten: echte Spalten + virtuelle Sammelspalte, aber NUR wenn es
   // tatsaechlich Waisen gibt (Plan Abschnitt 3.8). 'columns' bleibt dabei

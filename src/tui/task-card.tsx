@@ -39,6 +39,13 @@ export function TaskCard({ task, isSelected, isMoving, columnColor }: TaskCardPr
 
       {/* Meta-Zeile: Indikatoren */}
       <Box>
+        {/* P2-3: Ueberfaellig-Marker zuerst -- ein verpasstes Faelligkeitsdatum
+            ist dringlicher als eine strukturelle Blockade (die bleibt bestehen,
+            bis jemand die Abhaengigkeit aufloest; eine Frist verstreicht weiter,
+            je laenger sie uebersehen wird). isOverdue kommt fertig berechnet vom
+            TaskService (terminal-Spalten sind nie ueberfaellig) -- hier nur
+            angezeigt, nicht nachgerechnet. */}
+        {task.isOverdue && <Text color={ACCENT.overdue} bold>[!] </Text>}
         {task.isBlocked && <Text color={ACCENT.wipWarn}>[B] </Text>}
         {task.hasNotes && <Text color={ACCENT.notes}>[N] </Text>}
         {task.assignedTo && (

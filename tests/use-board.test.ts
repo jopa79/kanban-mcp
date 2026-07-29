@@ -9,7 +9,7 @@
 import { test, expect, describe, afterEach, mock } from "bun:test";
 import { createTestBoard, type TestContext } from "./helpers.ts";
 import * as dbModule from "../src/core/db.ts";
-import { loadData, isOrphanTask } from "../src/tui/use-board.ts";
+import { loadData, isOrphanTask, resolveEffectiveSort } from "../src/tui/use-board.ts";
 import type { Column, Task } from "../src/core/types.ts";
 
 describe("loadData", () => {
@@ -97,5 +97,71 @@ describe("#35 — loadBoardConfig wird pro loadData()-Aufruf genau einmal aufger
     callCount = 0;
     loadData(ctx.dir);
     expect(callCount).toBe(1);
+  });
+});
+
+// P2-3: loadData() reicht 'sort' optional an TaskService.listTasks() durch --
+// getestet gegen den ECHTEN TaskService (kein Mock), damit die Verdrahtung
+// nachweislich funktioniert, nicht nur die Signatur stimmt.
+describe("loadData mit sort-Option (P2-3)", () => {
+  let ctx: TestContext;
+  afterEach(() => ctx?.cleanup());
+
+  test("sort: 'priority' sortiert high vor medium vor low vor ungesetzt", () => {
+    ctx = createTestBoard();
+    ctx.taskService.addTask({ title: "Niedrig", priority: "low" });
+    ctx.taskService.addTask({ title: "Ohne" });
+    ctx.taskService.addTask({ title: "Hoch", priority: "high" });
+    ctx.taskService.addTask({ title: "Mittel", priority: "medium" });
+
+    const data = loadData(ctx.dir, { sort: "priority" });
+    expect(data.tasks.map((t) => t.title)).toEqual(["Hoch", "Mittel", "Niedrig", "Ohne"]);
+  });
+
+  test("ohne sort-Option bleibt die Standard-Reihenfolge (position) erhalten", () => {
+    ctx = createTestBoard();
+    ctx.taskService.addTask({ title: "Erst", priority: "low" });
+    ctx.taskService.addTask({ title: "Zweit", priority: "high" });
+
+    // Kein zweites Argument -- exakt der bisherige Aufruf, muss unveraendert
+    // funktionieren (Rueckwaertskompatibilitaet fuer alle bestehenden Aufrufer).
+    const data = loadData(ctx.dir);
+    expect(data.tasks.map((t) => t.title)).toEqual(["Erst", "Zweit"]);
+  });
+
+  test("sort-Option schreibt nirgends 'position' -- reiner Lesevorgang", () => {
+    ctx = createTestBoard();
+    const a = ctx.taskService.addTask({ title: "A", priority: "low" });
+    const b = ctx.taskService.addTask({ title: "B", priority: "high" });
+    const positionsBefore = [a.position, b.position];
+
+    loadData(ctx.dir, { sort: "priority" });
+
+    const positionsAfter = [
+      ctx.taskService.getTask(a.id)!.position,
+      ctx.taskService.getTask(b.id)!.position,
+    ];
+    expect(positionsAfter).toEqual(positionsBefore);
+  });
+});
+
+// P2-3, Anschlussfrage 2 (K-2): die Prioritaets-Sortierung ist ein reiner
+// Ansichtsmodus und MUSS im Verschiebe-Modus abgeschaltet sein, sonst springt
+// die Karte unter dem Cursor weg, waehrend man sie mit Pfeiltasten bewegt.
+// resolveEffectiveSort() ist die einzige Stelle, die diese Regel entscheidet --
+// als reine Funktion exportiert, damit die harte Bedingung automatisiert
+// nachweisbar ist statt nur manuell in der TUI geprueft zu werden.
+describe("resolveEffectiveSort (P2-3, harte Bedingung: aus im Verschiebe-Modus)", () => {
+  test("liefert 'priority', wenn Sortierung aktiv und nicht im Verschiebe-Modus", () => {
+    expect(resolveEffectiveSort(true, false)).toBe("priority");
+  });
+
+  test("liefert undefined, wenn Sortierung aktiv ist, ABER Verschiebe-Modus laeuft", () => {
+    expect(resolveEffectiveSort(true, true)).toBeUndefined();
+  });
+
+  test("liefert undefined, wenn Sortierung ohnehin aus ist", () => {
+    expect(resolveEffectiveSort(false, false)).toBeUndefined();
+    expect(resolveEffectiveSort(false, true)).toBeUndefined();
   });
 });

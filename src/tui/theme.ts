@@ -1,14 +1,23 @@
 // Zentrale Farbkonstanten fuer die Kanban TUI
+import type { TaskPriority } from "../core/types.ts";
 
 // Akzentfarben fuer Task-Elemente
 export const ACCENT = {
   notes: "#f59e0b",      // Amber — Notiz-Indikator
   assignee: "#38bdf8",   // Hellblau — Zugewiesen an
   labels: "#c084fc",     // Helles Lila — Label-Tags
-  wipWarn: "#ef4444",    // Rot — WIP-Limit ueberschritten
+  wipWarn: "#ef4444",    // Rot — WIP-Limit ueberschritten / Blockiert-Marker
   title: "#e2e8f0",      // Helles Grau — Titel-Text
   muted: "#64748b",      // Gedaempft — IDs, Meta-Info
   selected: "#1e293b",   // Dunkler Hintergrund fuer Selektion
+  // P2-3: eigener Ton (Orange), bewusst NICHT identisch mit wipWarn (Rot) --
+  // ein Task kann gleichzeitig blockiert UND ueberfaellig sein, zwei
+  // Klammer-Marker ("[B]", "[!]") in exakt derselben Farbe waeren auf der
+  // schmalen Karte schwerer auseinanderzuhalten als zwei unterscheidbare
+  // Toene. #f97316 existiert im Datei bereits als 'duplicate'-Tag-Farbe --
+  // bewusste Wiederverwendung statt eines weiteren, kaum unterscheidbaren
+  // Rot-Tons (siehe PRIORITY_COLORS-Kommentar fuer dasselbe Prinzip).
+  overdue: "#f97316",    // Orange — Ueberfaellig-Marker
 };
 
 // Sentinel-ID der virtuellen Sammelspalte fuer Waisen-Tasks (P1-6, ADR 0001).
@@ -66,4 +75,35 @@ export function getTagColor(tagName: string): string {
 // Hilfsfunktion: Spaltenfarbe holen
 export function getColumnColor(columnId: string): string {
   return COLUMN_COLORS[columnId] ?? DEFAULT_COLUMN_COLOR;
+}
+
+// Prioritaets-Farben (P2-3): high/medium/low nutzen bewusst dieselben Hex-
+// Werte wie thematisch verwandte, bereits vorhandene Marker (wipWarn/notes/
+// assignee) statt dreier neuer, kaum unterscheidbarer Rot-/Amber-Toene --
+// konsistent mit der bestehenden Mehrfachnutzung von Hex-Werten in
+// COLUMN_COLORS/TAGS (z.B. #ef4444 fuer wipWarn UND den 'bug'-Tag). 'null'
+// (keine Prioritaet) bleibt exklusiv ACCENT.muted -- keine der drei echten
+// Stufen teilt sich die Farbe mit "nicht gesetzt", sonst waere 'low' von
+// 'keine Prioritaet' farblich nicht zu unterscheiden.
+const PRIORITY_COLORS: Record<TaskPriority, string> = {
+  high: ACCENT.wipWarn,   // Rot — verlangt Aufmerksamkeit, wie Blockiert/WIP-Warnung
+  medium: ACCENT.notes,   // Amber — mittlere Dringlichkeit, wie der Notiz-Indikator
+  low: ACCENT.assignee,   // Hellblau — ruhig, keine Dringlichkeit
+};
+
+export function getPriorityColor(priority: TaskPriority | null): string {
+  return priority ? PRIORITY_COLORS[priority] : ACCENT.muted;
+}
+
+const PRIORITY_LABELS: Record<TaskPriority, string> = {
+  high: "Hoch",
+  medium: "Mittel",
+  low: "Niedrig",
+};
+
+// "—" analog zum bestehenden Platzhalter fuer eine leere Beschreibung
+// (detail-view.tsx: task.description ?? "—") -- ein Bindestrich fuer "nicht
+// gesetzt" ist in dieser Ansicht bereits etabliertes Vokabular.
+export function getPriorityLabel(priority: TaskPriority | null): string {
+  return priority ? PRIORITY_LABELS[priority] : "—";
 }

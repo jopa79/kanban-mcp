@@ -351,6 +351,45 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
     gestrichen)
   - 26 neue Tests (`tests/task-metadata.test.ts`) + 8 neue MCP-Tests
     (`tests/mcp-tools.test.ts`)
+- Prioritaet und Faelligkeit in der TUI (P2-3). Ueberfaellig-Marker auf der
+  Karte, Prioritaet + Faelligkeitsdatum in der Detailansicht (K-2: eine
+  Prioritaet kann man nachschlagen, eine verpasste Frist nicht — der knappe
+  Platz auf der Karte gehoert dem Wert, den man nirgends sonst findet)
+  - `TaskCard`: `[!]` (Orange, `ACCENT.overdue`) vor `[B]`/`[N]`, nur wenn
+    `task.isOverdue` — wird fertig vom `TaskService` geliefert, nicht in der
+    TUI nachgerechnet. Eigener Ton statt Wiederverwendung von `wipWarn`
+    (Blockiert-Rot): ein Task kann gleichzeitig blockiert und ueberfaellig
+    sein, zwei Klammer-Marker in identischer Farbe waeren auf der schmalen
+    Karte schwerer auseinanderzuhalten. Prioritaet erscheint bewusst NICHT
+    auf der Karte (K-2)
+  - `DetailView`: neue Zeilen "Prioritaet: Hoch/Mittel/Niedrig/—" und
+    "Faellig: <Datum>/— (ueberfaellig)"
+  - Prioritaet ist in der TUI setzbar (Taste `p` in der Detailansicht) —
+    `PriorityPicker` (`src/tui/priority-picker.tsx`, neue Datei, analog zu
+    `TagPicker`): Einfachauswahl aus vier Zustaenden (high/medium/low/keine)
+    mit Radio-Marken `( )`/`(x)` statt der Checkbox-Marken `[ ]`/`[x]` aus
+    `TagPicker` (Einfach- vs. Mehrfachauswahl). **Kein Texteingabefeld** —
+    vier gueltige Zustaende sind eine Auswahl, kein Freitext
+  - `dueDate` bleibt in der TUI bewusst nur lesbar (CLI/MCP setzen es
+    weiterhin): ein Datum ist unbeschraenkter Freitext mit strenger
+    Kalender-Validierung (`assertValidDueDate` wirft), waehrend
+    `useBoard().updateTask()` Service-Fehler nicht abfaengt — ein
+    Freitext-Editor waere die erste Eingabe der TUI, die fehlschlagen und
+    einen Fehlerpfad brauchen kann, kein gleich grosser Folgeschritt zum
+    Prioritaets-Picker
+  - Board-Ansicht nach Prioritaet sortierbar (Taste `s`, reiner Ansichtsmodus):
+    nutzt `TaskService.listTasks({ sort: "priority" })` (P2-1) ueber
+    `loadData()`/`useBoard()`, sortiert nie serverseitig neu in der TUI.
+    Schreibt nirgends `position` (rein lesender Pfad, per Test nachgewiesen) —
+    das Feld traegt die manuelle Reihenfolge aus dem Verschiebe-Modus. Im
+    Verschiebe-Modus abgeschaltet (`resolveEffectiveSort()`, `src/tui/use-board.ts`),
+    sonst springt die Karte unter dem Cursor weg, waehrend man sie bewegt
+  - 33 neue Tests (`tests/theme.test.ts`, `tests/task-card.test.tsx`,
+    `tests/detail-view.test.tsx`, `tests/priority-picker.test.tsx`,
+    Erweiterung von `tests/use-board.test.ts`) — Komponenten-Tests ueber Inks
+    `renderToString()` (bereits Projekt-Abhaengigkeit, kein `ink-testing-library`
+    noetig); Tastatur-Interaktion bleibt manuell zu verifizieren
+    (`useInput()` ist ohne TTY ein No-Op)
 
 ### Removed
 

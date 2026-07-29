@@ -19,7 +19,7 @@ export type Mode =
   | "board" | "detail" | "add" | "filter" | "confirm-delete" | "help"
   | "edit-notes" | "edit-tags" | "edit-title" | "edit-description"
   | "archive" | "edit-deps" | "export-path" | "import-path"
-  | "import-confirm" | "confirm-override";
+  | "import-confirm" | "confirm-override" | "edit-priority";
 
 // Ausstehender Override: Ablehnungsgrund (voller Text aus TransitionService,
 // ADR 0002) + die Aktion, die bei 'y' mit override:true wiederholt wird.
@@ -42,6 +42,9 @@ export interface UseInputModesArgs {
   importPath: string;
   pendingOverride: PendingOverride | null;
   selectedTask: Task | null;
+  // P2-3: reiner Ansichtsmodus (sortiert nach Prioritaet, schreibt nie
+  // 'position'). Toggle lebt hier wie alle anderen Board-Modus-Tasten.
+  sortByPriority: boolean;
   // Nur die Laenge wird gebraucht (Grenzen fuer Pfeiltasten hoch/runter) --
   // das volle Array muesste sonst unnoetig durchgereicht werden.
   currentColTaskCount: number;
@@ -55,6 +58,7 @@ export interface UseInputModesArgs {
   setInputValue: (value: string) => void;
   setPendingOverride: (pending: PendingOverride | null) => void;
   setArchivedTasks: (tasks: Task[]) => void;
+  setSortByPriority: (value: boolean) => void;
 }
 
 // Registriert die komplette Tastatur-Kaskade der Board-Ansicht ueber Inks
@@ -64,8 +68,10 @@ export function useInputModes(args: UseInputModesArgs): void {
   const {
     workingDir, exit, board, mode, selectedCol, selectedRow, moving,
     detailTask, importPath, pendingOverride, selectedTask, currentColTaskCount,
+    sortByPriority,
     setMode, setStatusMsg, setSelectedCol, setSelectedRow, setMoving,
     setFilterText, setDetailTask, setInputValue, setPendingOverride, setArchivedTasks,
+    setSortByPriority,
   } = args;
 
   // Fuehrt eine Aktion aus, die von der Zustandsmaschine abgelehnt werden kann
@@ -122,7 +128,7 @@ export function useInputModes(args: UseInputModesArgs): void {
     }
 
     // Texteingabe-Modi: kein Key-Handling hier (Komponenten handeln selbst)
-    if (mode === "add" || mode === "filter" || mode === "edit-notes" || mode === "edit-tags" || mode === "edit-title" || mode === "edit-description" || mode === "edit-deps" || mode === "export-path" || mode === "import-path") return;
+    if (mode === "add" || mode === "filter" || mode === "edit-notes" || mode === "edit-tags" || mode === "edit-title" || mode === "edit-description" || mode === "edit-deps" || mode === "export-path" || mode === "import-path" || mode === "edit-priority") return;
 
     if (mode === "detail") {
       if (input === "q" || key.escape) { setMode("board"); setDetailTask(null); setStatusMsg(""); }
@@ -139,6 +145,9 @@ export function useInputModes(args: UseInputModesArgs): void {
       if (input === "b" && detailTask) {
         setInputValue(detailTask.description ?? "");
         setMode("edit-description");
+      }
+      if (input === "p" && detailTask) {
+        setMode("edit-priority");
       }
       if (input === "D" && detailTask) {
         setMode("edit-deps");
@@ -225,6 +234,16 @@ export function useInputModes(args: UseInputModesArgs): void {
     if (input === "a" && selectedTask) { board.archiveTask(selectedTask.id); setStatusMsg(`"${selectedTask.title}" archiviert`); setSelectedRow(Math.max(0, selectedRow - 1)); }
     if (input === "/") { setInputValue(""); setMode("filter"); }
     if (input === "r") { board.refresh(); setStatusMsg("Aktualisiert"); }
+    // P2-3: reiner Ansichtsmodus, toggelt nur die Anzeige-Sortierung -- der
+    // eigentliche Verzicht auf Sortierung waehrend des Verschiebens passiert
+    // NICHT hier (dieser Zweig ist im Verschiebe-Modus ohnehin unerreichbar,
+    // siehe 'if (moving && selectedTask)' oben), sondern verbindlich in
+    // resolveEffectiveSort() (use-board.ts), das 'moving' direkt prueft.
+    if (input === "s") {
+      const next = !sortByPriority;
+      setSortByPriority(next);
+      setStatusMsg(next ? "Sortiert nach Prioritaet" : "Standard-Sortierung");
+    }
     if (input === "?") { setMode("help"); }
     if (input === "A") { setArchivedTasks(board.listArchived()); setMode("archive"); }
     if (input === "E") {
