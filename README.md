@@ -27,18 +27,19 @@ curl -fsSL https://bun.sh/install | bash
 
 ## Installation
 
-**Ohne Installation, pro Aufruf** (am schnellsten zum Ausprobieren):
-
-```bash
-bunx kanban-mcp init
-bunx kanban-mcp add "Erster Task"
-```
+Das Projekt liegt nicht auf npm — Installation direkt aus dem Repository.
 
 **Global installieren** (fuer `kanban` als dauerhaftes Kommando im PATH):
 
 ```bash
-bun install -g kanban-mcp
+bun install -g github:jopa79/kanban-mcp
 kanban init
+```
+
+**Eine bestimmte Version**:
+
+```bash
+bun install -g github:jopa79/kanban-mcp#v0.2.0
 ```
 
 **Aus dem Quellcode** (zum Mitentwickeln am Projekt selbst):
@@ -293,8 +294,8 @@ Als Claude Code MCP Server registrieren (`~/.claude/settings.json`):
 }
 ```
 
-Nach globaler Installation (`bun install -g kanban-mcp`) genuegt statt Pfad
-und `bun run` auch direkt `"command": "kanban", "args": ["mcp"]`.
+Nach globaler Installation (`bun install -g github:jopa79/kanban-mcp`) genuegt
+statt Pfad und `bun run` auch direkt `"command": "kanban", "args": ["mcp"]`.
 
 **Verfuegbare MCP Tools:**
 

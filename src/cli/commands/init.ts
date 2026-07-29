@@ -12,8 +12,9 @@ import { success, error } from "../formatters.ts";
 //
 // Bewusst NICHT ~/.kanban/ -- das heisst im Code bereits eindeutig "hier
 // liegt ein Board" (siehe getBoardPaths() in db.ts). Ein Board dort UND eine
-// Registry dort wuerden zwei Bedeutungen in einen Pfad legen; bei JoPa liegt
-// unter ~/.kanban/ bereits ein echtes Board.
+// Registry dort wuerden zwei Bedeutungen in einen Pfad legen. Der Fall ist
+// nicht theoretisch: ein versehentliches 'kanban init' im Home-Verzeichnis
+// legt genau dort ein Board an (siehe ADR 0003).
 //
 // Folgt der XDG Base Directory Spec: $XDG_CONFIG_HOME/kanban, sonst
 // ~/.config/kanban. Ein leerer XDG_CONFIG_HOME zaehlt laut Spec als "nicht
