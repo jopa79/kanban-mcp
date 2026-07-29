@@ -11,7 +11,8 @@
     "kanban": "./src/index.ts"
   },
   "files": [
-    "src",
+    "src/**/*.ts",
+    "src/**/*.tsx",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
