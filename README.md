@@ -58,6 +58,53 @@ kanban restore <id>         # Wiederherstellen
 kanban purge --confirm      # Archiv loeschen
 ```
 
+## TodoWrite Sync (Claude Code Hook)
+
+`kanban sync` liest den TodoWrite-Hook-Payload von stdin und gleicht ihn mit
+dem Board ab. Als `PostToolUse`-Hook fuer `TodoWrite` in `~/.claude/settings.json`
+registrieren:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      { "matcher": "TodoWrite", "hooks": [{ "type": "command", "command": "kanban sync" }] }
+    ]
+  }
+}
+```
+
+**Verhalten:**
+- Todos werden per **Titel-Vergleich** mit bestehenden Tasks abgeglichen
+  (TodoWrite liefert keine ID, siehe Einschraenkung unten). Bei mehreren
+  gleichnamigen Tasks gewinnt deterministisch der **aelteste, nicht
+  archivierte** — archivierte Tasks werden nie getroffen, und zwei
+  gleichnamige Todos im selben Aufruf landen auf zwei verschiedenen Tasks
+- Ein Todo meldet einen **Zielzustand**, keinen Weg dorthin. Liegt die
+  Zielspalte mehr als einen Schritt entfernt (z.B. ein neuer, sofort
+  `completed` gemeldeter Todo), durchlaeuft der Task jede Zwischenspalte als
+  eigene, protokollierte Transition (`reason: "reconcile"`, `reportedBy:
+  "sync"`) — die Zustandsmaschine wird nicht umgangen, auch wenn alle
+  Zwischenschritte in derselben Sekunde passieren
+- **WIP-Ueberschreitungen werden protokolliert, nicht abgelehnt** (TodoWrite
+  selbst laesst sich nicht ablehnen — der Hook laeuft, nachdem Claude Code den
+  Zustand bereits gesetzt hat). Meldung auf stderr, `kanban status` zeigt die
+  ueberfuellte Spalte
+- Verschwundene Todos werden **ignoriert** — ein fehlendes Todo im naechsten
+  Aufruf koennte "abgebrochen" heissen oder schlicht "Liste gekuerzt"; aus dem
+  Payload nicht unterscheidbar. Der Sync loescht und archiviert nie
+- Ein Board-Problem (nicht migriertes Schema, kaputte `config.json`) meldet
+  sich auf stderr mit **Exit 0** — ein Hook, der einen Agenten-Turn mit
+  Exit 1 stoert, richtet mehr Schaden an als ein ausgefallener Sync
+
+**Bekannte Einschraenkung:** TodoWrite liefert keine stabile ID pro Todo, nur
+`content`, `status` und `activeForm`. Wird ein aus einem Todo entstandener
+Task im TUI oder per CLI **umbenannt**, erkennt der naechste Sync ihn nicht
+wieder (der Titel passt nicht mehr) und legt einen zweiten Task an. Das ist
+keine Fehlfunktion, sondern eine prinzipielle Grenze der verfuegbaren Daten —
+mit den Feldern, die TodoWrite liefert, ist die Identitaet eines Todos ueber
+Umbenennungen hinweg nicht rekonstruierbar.
+
 ## TUI (Terminal UI)
 
 ```bash

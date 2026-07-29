@@ -1,26 +1,16 @@
 // CLI Command: kanban sync
-// Liest TodoWrite Hook-Input von stdin und synchronisiert ins Board
+// Liest TodoWrite Hook-Input von stdin und synchronisiert ins Board.
+// Reine Huelle (P1-7): stdin lesen, parsen, an syncTodos()
+// (src/core/sync-service.ts) uebergeben, Bericht auf stderr ausgeben. Die
+// eigentliche Logik lebt bewusst NICHT hier, sonst waechst die Datei ueber
+// 300 Zeilen und ist nur ueber simuliertes stdin testbar (Plan Abschnitt 3.9).
 import { Command } from "commander";
 import type { Database } from "bun:sqlite";
 import { boardExists, openDb, getBoardPaths, loadBoardConfig } from "../../core/db.ts";
 import { BoardService } from "../../core/board-service.ts";
 import { TaskService } from "../../core/task-service.ts";
 import { NotesService } from "../../core/notes-service.ts";
-
-// TodoWrite Status -> Kanban Spalte
-const STATUS_TO_COLUMN: Record<string, string> = {
-  pending: "todo",
-  in_progress: "in-progress",
-  completed: "done",
-  cancelled: "backlog",
-};
-
-interface TodoItem {
-  id: string;
-  content: string;
-  status: "pending" | "in_progress" | "completed" | "cancelled";
-  priority: "high" | "medium" | "low";
-}
+import { syncTodos, type TodoItem } from "../../core/sync-service.ts";
 
 interface HookInput {
   cwd: string;
@@ -78,67 +68,34 @@ export const syncCommand = new Command("sync")
     // existiert ja, laesst sich nur nicht oeffnen).
     let db: Database;
     let boardService: BoardService;
-    let notesService: NotesService;
     let taskService: TaskService;
     try {
       db = openDb(paths.dbPath);
       const config = loadBoardConfig(paths.configPath);
       boardService = new BoardService(db, config);
-      notesService = new NotesService(paths.kanbanDir);
+      const notesService = new NotesService(paths.kanbanDir);
       taskService = new TaskService(db, boardService, notesService);
     } catch (err) {
       console.error(`kanban-mcp sync: ${(err as Error).message}`);
       process.exit(0);
     }
 
-    let created = 0;
-    let moved = 0;
-    let skipped = 0;
-
     try {
-      const existingTasks = taskService.listTasks();
-
-      for (const todo of todos) {
-        const targetColumn = STATUS_TO_COLUMN[todo.status] ?? "todo";
-
-        // Existierenden Task suchen: per Titel-Match
-        const existing = existingTasks.find(
-          (t) => t.title === todo.content || t.title === truncate(todo.content, 200),
-        );
-
-        if (existing) {
-          // Task existiert — verschieben wenn noetig
-          if (existing.columnId === targetColumn) {
-            skipped++;
-            continue;
-          }
-          if (targetColumn === "done") {
-            taskService.completeTask(existing.id);
-          } else {
-            taskService.moveTask(existing.id, targetColumn);
-          }
-          moved++;
-        } else {
-          // Neuer Task erstellen
-          if (todo.status === "cancelled") {
-            skipped++;
-            continue;
-          }
-          taskService.addTask({
-            title: truncate(todo.content, 200),
-            columnId: targetColumn,
-            createdBy: "claude",
-          });
-          created++;
-        }
-      }
-
+      const report = syncTodos(db, taskService, boardService, todos);
       db.close();
 
       // Ergebnis auf stderr (stdout ist reserviert)
       console.error(
-        `kanban-mcp sync: ${created} erstellt, ${moved} verschoben, ${skipped} uebersprungen`,
+        `kanban-mcp sync: ${report.created} erstellt, ${report.moved} verschoben, ${report.skipped} uebersprungen`,
       );
+      // WIP-Verstoesse werden durchgewunken statt abgelehnt (TodoWrite ist
+      // nicht ablehnbar, der Hook laeuft erst nachdem der Agent den Zustand
+      // gesetzt hat) — aber sichtbar gemacht, nicht verschwiegen.
+      if (report.wipOverrides > 0) {
+        console.error(
+          `kanban-mcp sync: ${report.wipOverrides} WIP-Ueberschreitung(en) geloggt (nicht abgelehnt) — Details: kanban status`,
+        );
+      }
       process.exit(0);
     } catch (err) {
       db.close();
@@ -146,8 +103,3 @@ export const syncCommand = new Command("sync")
       process.exit(1);
     }
   });
-
-function truncate(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text;
-  return text.slice(0, maxLen - 3) + "...";
-}

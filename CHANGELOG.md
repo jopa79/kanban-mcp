@@ -238,6 +238,56 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   (`src/cli/formatters.ts`, `src/cli/commands/status.ts`) —
   `TaskService.getStatus()` selbst bleibt unangetastet, die Korrektur passiert
   in der CLI-Schicht (Core-Grenze dieses Tasks, siehe Bericht an team-lead)
+- **`kanban sync` funktioniert jetzt tatsaechlich** (P1-7). Keine Erweckung im
+  Sinne einer Regression, sondern die erste je funktionierende Fassung: der
+  Konstruktor-Bug (`TaskService` mit 2 statt 3 Argumenten) machte jeden Lauf
+  gegen ein nicht-leeres Board unbrauchbar, seit die Datei existiert
+  - Logik nach `src/core/sync-service.ts` ausgelagert (`syncTodos()`),
+    `sync.ts` bleibt reine CLI-Huelle (stdin lesen, parsen, Bericht auf
+    stderr) — sonst waere die Logik nur ueber simuliertes stdin testbar
+  - `TodoItem`-Interface korrigiert: `content`, `status`
+    (`pending`/`in_progress`/`completed`), `activeForm` (bekannt, bewusst
+    ungenutzt — `content` traegt die relevante Information). **Kein** `id`,
+    **kein** `priority` — beide existieren im echten TodoWrite-Payload nicht
+    (Plan Abschnitt 0.1, belegt aus drei unabhaengigen Quellen). Der
+    `cancelled`-Zweig in `STATUS_TO_COLUMN` entfaellt als toter Code, ein
+    unbekannter `status`-Wert faellt auf `todo` zurueck statt abzustuerzen
+  - Content-Matching gehaertet und **deterministisch**: bei mehreren
+    gleichnamigen Tasks gewinnt der aelteste nicht archivierte
+    (`created_at ASC`), nicht der erste in Listenreihenfolge (die haengt an
+    `position`, die sich bei jedem Verschieben aendert — derselbe Sync traf
+    bisher je nach Board-Zustand einen anderen Task). Archivierte Tasks
+    werden nie getroffen; ein in diesem Lauf bereits getroffener Task matcht
+    nicht erneut, sonst kollabieren zwei gleichnamige Todos auf einen Task
+  - Reconcile: ein Todo meldet einen Zielzustand, `TransitionService.
+    reconcilePath()` (P1-1) berechnet die Zwischenspalten, jeder Schritt eine
+    eigene Transition (`reportedBy: "sync"`, `reason: "reconcile"`). Ein
+    neuer, sofort `completed` gemeldeter Todo erzeugt so vier Transitions
+    (Entstehung + drei Reconcile-Schritte) mit Zeitstempeln in derselben
+    Sekunde — bewusster Preis fuer die Kettenintegritaet, nicht
+    "wegoptimierbar". `reconcilePath()` bleibt ausschliesslich fuer diesen
+    Zweck reserviert (P1-1)
+  - WIP-Ueberschreitungen werden protokolliert statt abgelehnt
+    (`moveTask(..., { wipPolicy: "log" })` aus P1-2: `was_override: true`,
+    `reason: "wip-exceeded (sync)"`), plus eine Zeile auf stderr — TodoWrite
+    selbst laesst sich nicht ablehnen, der Hook laeuft, nachdem Claude Code
+    den Zustand bereits gesetzt hat. Die Kettenregel bleibt dabei hart; ein
+    Task, der laut TodoWrite fertig ist, aber im Board noch durch eine offene
+    Abhaengigkeit blockiert wird (P1-2), laesst den Reconcile-Schritt bewusst
+    scheitern — das ist ein "Fehler in der Mitte" im Sinne des naechsten
+    Punkts
+  - Die gesamte Sync-Schleife laeuft in **einer Transaktion**
+    (`db.transaction()`): bricht ein Schritt mit einem echten Fehler ab, wird
+    fuer den ganzen Lauf nichts geschrieben, statt einen halb
+    synchronisierten Zustand zu hinterlassen
+  - Verschwundene Todos werden weiterhin ignoriert (kein Loeschen/Archivieren
+    — aus dem Payload nicht von einer gekuerzten Liste unterscheidbar),
+    Priority-Uebernahme bleibt aus (Feld existiert nicht), Schema-Guard bleibt
+    bei Exit 0 mit Meldung auf stderr (P0-5)
+  - **Bekannte, nicht behebbare Einschraenkung** (README): TodoWrite liefert
+    keine Identitaet ueber Aufrufe hinweg. Wird ein aus einem Todo
+    entstandener Task umbenannt, erzeugt der naechste Sync einen zweiten Task
+  - 14 neue Tests (`tests/sync-service.test.ts`)
 
 ### Removed
 
