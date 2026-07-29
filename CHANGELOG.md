@@ -271,15 +271,26 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
     (`moveTask(..., { wipPolicy: "log" })` aus P1-2: `was_override: true`,
     `reason: "wip-exceeded (sync)"`), plus eine Zeile auf stderr — TodoWrite
     selbst laesst sich nicht ablehnen, der Hook laeuft, nachdem Claude Code
-    den Zustand bereits gesetzt hat. Die Kettenregel bleibt dabei hart; ein
-    Task, der laut TodoWrite fertig ist, aber im Board noch durch eine offene
-    Abhaengigkeit blockiert wird (P1-2), laesst den Reconcile-Schritt bewusst
-    scheitern — das ist ein "Fehler in der Mitte" im Sinne des naechsten
-    Punkts
+    den Zustand bereits gesetzt hat. Die Kettenregel bleibt dabei hart
+  - Ein Task, der laut TodoWrite weiterlaufen soll, im Board aber durch eine
+    offene Abhaengigkeit blockiert ist (P1-2), wird **uebersprungen** —
+    bleibt unveraendert stehen, keine Transition, kein Override. Anders als
+    WIP (ein einmaliges Ereignis) ist eine offene Abhaengigkeit ein
+    ANDAUERNDER Zustand, der Stunden oder Tage bestehen kann; ihn wie einen
+    echten Fehler zu behandeln liesse jeden Sync-Lauf scheitern, solange die
+    Abhaengigkeit offen ist — derselbe Dauerfehler, fuer den P0-5 bereits
+    "Exit 0, stderr" statt "Exit 1" entschieden hat. Zaehlt als `skipped`,
+    stderr nennt Task und wartende Abhaengigkeit(en) namentlich. Rueckwaerts
+    bleibt fuer einen blockierten Task immer erlaubt (dieselbe Ausnahme wie
+    bei der Dependency-Regel selbst), alle uebrigen Todos desselben Payloads
+    laufen unbeeinflusst weiter. `TaskService.canMoveWhileBlocked()` ist
+    dafuer public geworden (vorher privat) — sync-service.ts nutzt dieselbe
+    Pruefung, statt die Regel ein zweites Mal zu implementieren
   - Die gesamte Sync-Schleife laeuft in **einer Transaktion**
-    (`db.transaction()`): bricht ein Schritt mit einem echten Fehler ab, wird
-    fuer den ganzen Lauf nichts geschrieben, statt einen halb
-    synchronisierten Zustand zu hinterlassen
+    (`db.transaction()`): bricht ein Schritt mit einem ECHTEN Fehler ab (z.B.
+    eine Zielspalte, die auf dem Board gar nicht existiert), wird fuer den
+    ganzen Lauf nichts geschrieben, statt einen halb synchronisierten
+    Zustand zu hinterlassen
   - Verschwundene Todos werden weiterhin ignoriert (kein Loeschen/Archivieren
     — aus dem Payload nicht von einer gekuerzten Liste unterscheidbar),
     Priority-Uebernahme bleibt aus (Feld existiert nicht), Schema-Guard bleibt
@@ -287,7 +298,7 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   - **Bekannte, nicht behebbare Einschraenkung** (README): TodoWrite liefert
     keine Identitaet ueber Aufrufe hinweg. Wird ein aus einem Todo
     entstandener Task umbenannt, erzeugt der naechste Sync einen zweiten Task
-  - 14 neue Tests (`tests/sync-service.test.ts`)
+  - 17 neue Tests (`tests/sync-service.test.ts`)
 
 ### Removed
 

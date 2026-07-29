@@ -96,6 +96,15 @@ export const syncCommand = new Command("sync")
           `kanban-mcp sync: ${report.wipOverrides} WIP-Ueberschreitung(en) geloggt (nicht abgelehnt) — Details: kanban status`,
         );
       }
+      // Ein durch eine offene Abhaengigkeit blockierter Task wird
+      // uebersprungen, nicht bewegt (Zustand, kein Fehler) — aber benannt,
+      // sonst wundert sich jemand ueber ein Board, das TodoWrite nicht folgt.
+      for (const skip of report.blockedSkips) {
+        const deps = skip.openDependencies.map((d) => `"${d.title}"`).join(", ");
+        console.error(
+          `kanban-mcp sync: uebersprungen (blockiert): "${skip.title}" wartet auf offene Abhaengigkeit(en): ${deps}`,
+        );
+      }
       process.exit(0);
     } catch (err) {
       db.close();

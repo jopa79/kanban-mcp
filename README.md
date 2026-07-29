@@ -90,6 +90,11 @@ registrieren:
   selbst laesst sich nicht ablehnen — der Hook laeuft, nachdem Claude Code den
   Zustand bereits gesetzt hat). Meldung auf stderr, `kanban status` zeigt die
   ueberfuellte Spalte
+- Ist der zugehoerige Task durch eine **offene Abhaengigkeit blockiert**, wird
+  das Todo **uebersprungen** statt bewegt — anders als beim WIP-Limit, das der
+  Sync reissen darf, ist eine offene Abhaengigkeit eine Tatsache: der Task ist
+  noch nicht dran. Meldung auf stderr nennt Task und wartende Abhaengigkeit(en);
+  alle uebrigen Todos desselben Aufrufs laufen normal weiter
 - Verschwundene Todos werden **ignoriert** — ein fehlendes Todo im naechsten
   Aufruf koennte "abgebrochen" heissen oder schlicht "Liste gekuerzt"; aus dem
   Payload nicht unterscheidbar. Der Sync loescht und archiviert nie

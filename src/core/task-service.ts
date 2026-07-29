@@ -252,7 +252,14 @@ export class TaskService extends ArchiveService {
   // die Kettenregel aus config.json ableitbar bleibt statt hartkodiert zu
   // sein. Lebt hier (nicht in TransitionService), weil TransitionService
   // bewusst nichts von Dependencies weiss -- siehe P1-1.
-  private canMoveWhileBlocked(task: Task, targetColumn: Column): TransitionCheck {
+  //
+  // Bewusst public (P1-7): sync-service.ts nutzt dieselbe Pruefung, um einen
+  // Reconcile-Schritt VOR dem eigentlichen moveTask()-Aufruf zu erkennen und
+  // zu ueberspringen, statt die Ausnahme hochkommen zu lassen (eine offene
+  // Abhaengigkeit ist ein andauernder Zustand, kein einmaliges Ereignis wie
+  // ein WIP-Verstoss -- dieselbe Regel doppelt zu implementieren waere ein
+  // Drift-Risiko).
+  canMoveWhileBlocked(task: Task, targetColumn: Column): TransitionCheck {
     if (!task.isBlocked) return { allowed: true };
 
     const columns = this.boardService.getColumns();

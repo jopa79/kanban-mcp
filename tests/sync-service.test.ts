@@ -4,6 +4,9 @@ import { test, expect, describe, afterEach } from "bun:test";
 import { createTestBoard, type TestContext } from "./helpers.ts";
 import { syncTodos, truncate, TITLE_TRUNCATE_LENGTH, type TodoItem } from "../src/core/sync-service.ts";
 import { TransitionService } from "../src/core/transition-service.ts";
+import { BoardService } from "../src/core/board-service.ts";
+import { TaskService } from "../src/core/task-service.ts";
+import type { ColumnConfig } from "../src/core/types.ts";
 
 describe("syncTodos", () => {
   let ctx: TestContext;
@@ -193,23 +196,103 @@ describe("syncTodos", () => {
     });
   });
 
-  describe("Transaktion", () => {
-    test("Fehler in der Mitte (blockierter Task kann nicht vorwaerts bewegt werden) -> kein Task geschrieben", () => {
+  describe("Blockierte Tasks -- uebersprungen, nicht abgebrochen", () => {
+    // Teamlead-Korrektur nach P1-7-Erstabnahme: eine offene Abhaengigkeit ist
+    // ein ANDAUERNDER Zustand (kann Stunden/Tage bestehen), kein einmaliges
+    // Ereignis wie ein WIP-Verstoss. Wuerde sync() dabei die gesamte
+    // Transaktion abbrechen, schluege JEDER Sync-Lauf fehl, solange die
+    // Abhaengigkeit offen ist -- derselbe Dauerfehler, fuer den P0-5 bereits
+    // "Exit 0, stderr" statt "Exit 1" entschieden hat. Deshalb: ueberspringen.
+    test("blockierter Task im Payload wird uebersprungen, bleibt unveraendert, keine Transition", () => {
       ctx = createTestBoard();
+      const transitions = new TransitionService(ctx.db, ctx.boardService);
       const blocker = ctx.taskService.addTask({ title: "Blocker" }); // wird nie geloest
+      const blocked = ctx.taskService.addTask({ title: "Blockierter Task", dependsOn: [blocker.id] });
+
+      const todos: TodoItem[] = [{ content: "Blockierter Task", status: "in_progress", activeForm: "" }];
+      const report = syncTodos(ctx.db, ctx.taskService, ctx.boardService, todos);
+
+      expect(report.moved).toBe(0);
+      expect(report.skipped).toBe(1);
+      expect(report.blockedSkips).toHaveLength(1);
+      expect(report.blockedSkips[0]!.title).toBe("Blockierter Task");
+      expect(report.blockedSkips[0]!.openDependencies.map((d) => d.title)).toEqual(["Blocker"]);
+
+      // Task unveraendert: keine neue Transition, immer noch in Todo.
+      const stillThere = ctx.taskService.getTask(blocked.id);
+      expect(stillThere!.columnId).toBe("todo");
+      const history = transitions.history(blocked.id);
+      expect(history).toHaveLength(1); // nur die Entstehungs-Transition von addTask oben
+    });
+
+    test("restliche Todos im selben Payload werden trotz eines blockierten Todos normal verarbeitet", () => {
+      ctx = createTestBoard();
+      const blocker = ctx.taskService.addTask({ title: "Blocker" });
       ctx.taskService.addTask({ title: "Blockierter Task", dependsOn: [blocker.id] });
-      const before = ctx.taskService.listTasks();
 
       const todos: TodoItem[] = [
-        { content: "Ganz neuer Task", status: "pending", activeForm: "" }, // fuer sich allein gueltig
-        { content: "Blockierter Task", status: "in_progress", activeForm: "" }, // Dependency-Regel schlaegt zu
+        { content: "Ganz neuer Task", status: "pending", activeForm: "" },
+        { content: "Blockierter Task", status: "in_progress", activeForm: "" }, // blockiert -- uebersprungen
+        { content: "Blocker", status: "completed", activeForm: "" }, // unblockiert -- laeuft normal durch
       ];
 
-      expect(() => syncTodos(ctx.db, ctx.taskService, ctx.boardService, todos)).toThrow();
+      const report = syncTodos(ctx.db, ctx.taskService, ctx.boardService, todos);
+
+      expect(report.created).toBe(1);
+      expect(report.skipped).toBe(1);
+      expect(report.moved).toBe(1);
+      expect(report.blockedSkips).toHaveLength(1);
+      expect(ctx.taskService.listTasks().some((t) => t.title === "Ganz neuer Task")).toBe(true);
+      expect(ctx.taskService.getTask(blocker.id)!.columnId).toBe("done");
+    });
+
+    test("rueckwaerts bleibt fuer einen blockierten Task erlaubt (kein Ueberspringen)", () => {
+      ctx = createTestBoard();
+      const blocker = ctx.taskService.addTask({ title: "Blocker" });
+      const blocked = ctx.taskService.addTask({ title: "Blockiert, aber in Review", dependsOn: [blocker.id] });
+      ctx.taskService.moveTask(blocked.id, "review", { override: true });
+
+      // Review -> Todo ist ein Ruecksprung -- die Dependency-Regel laesst
+      // Rueckwaerts immer zu, auch waehrend isBlocked.
+      const todos: TodoItem[] = [{ content: "Blockiert, aber in Review", status: "pending", activeForm: "" }];
+      const report = syncTodos(ctx.db, ctx.taskService, ctx.boardService, todos);
+
+      expect(report.moved).toBe(1);
+      expect(report.blockedSkips).toHaveLength(0);
+      expect(ctx.taskService.getTask(blocked.id)!.columnId).toBe("todo");
+    });
+  });
+
+  describe("Transaktion", () => {
+    test("echter Fehler in der Mitte (Zielspalte existiert auf diesem Board nicht) -> kein Task geschrieben", () => {
+      ctx = createTestBoard();
+      // Board OHNE "in-progress" -- STATUS_TO_COLUMN verweist trotzdem darauf
+      // (status: "in_progress"). Das ist ein ECHTER Fehler (Konfigurationsdrift),
+      // kein kontrollierter Fall wie WIP oder eine offene Abhaengigkeit, und
+      // muss die Transaktion weiterhin zurueckrollen.
+      const strippedColumns: ColumnConfig[] = [
+        { id: "todo", name: "Todo", wipLimit: 0, allowEntry: true, isTerminal: false },
+        { id: "done", name: "Done", wipLimit: 0, allowEntry: false, isTerminal: true },
+      ];
+      const strippedBoardService = new BoardService(ctx.db, {
+        name: "Stripped",
+        createdAt: new Date().toISOString(),
+        schemaVersion: 3,
+        columns: strippedColumns,
+      });
+      const strippedTaskService = new TaskService(ctx.db, strippedBoardService, ctx.notesService);
+
+      const before = strippedTaskService.listTasks();
+      const todos: TodoItem[] = [
+        { content: "Ganz neuer Task", status: "pending", activeForm: "" }, // fuer sich allein gueltig
+        { content: "Zweiter Task", status: "in_progress", activeForm: "" }, // Zielspalte fehlt auf diesem Board
+      ];
+
+      expect(() => syncTodos(ctx.db, strippedTaskService, strippedBoardService, todos)).toThrow(/existiert nicht/);
 
       // Die gesamte Schleife lief in einer Transaktion -- auch der fuer sich
       // genommen gueltige erste Todo darf NICHT geschrieben worden sein.
-      const after = ctx.taskService.listTasks();
+      const after = strippedTaskService.listTasks();
       expect(after).toHaveLength(before.length);
       expect(after.some((t) => t.title === "Ganz neuer Task")).toBe(false);
     });

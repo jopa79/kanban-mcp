@@ -39,13 +39,28 @@ const DEFAULT_COLUMN = "todo";
 // gekuerzt angelegte Tasks relevant.
 export const TITLE_TRUNCATE_LENGTH = 200;
 
+// Ein Todo, dessen Task wegen einer offenen Abhaengigkeit uebersprungen wurde
+// (siehe reconcileTask) -- fuer die stderr-Meldung in sync.ts: welcher Task,
+// und auf welche Abhaengigkeiten er wartet.
+export interface BlockedSkip {
+  taskId: string;
+  title: string;
+  openDependencies: Array<{ id: string; title: string }>;
+}
+
 export interface SyncReport {
   created: number;
   moved: number;
+  // Todos, die nichts zu tun hatten (bereits am Ziel) ODER uebersprungen
+  // wurden, weil ihr Task durch eine offene Abhaengigkeit blockiert ist
+  // (siehe blockedSkips fuer die Teilmenge der letzteren).
   skipped: number;
   // WIP-Verstoesse, die durchgewunken (nicht abgelehnt) und protokolliert
   // wurden -- TodoWrite ist nicht ablehnbar, siehe reconcileTask().
   wipOverrides: number;
+  // Teilmenge von 'skipped': Todos, deren Task wegen einer offenen
+  // Abhaengigkeit nicht bewegt werden konnte (siehe reconcileTask).
+  blockedSkips: BlockedSkip[];
 }
 
 // Kuerzt einen Titel auf maxLen Zeichen (mit "..."-Suffix) -- exportiert,
@@ -59,11 +74,18 @@ export function truncate(text: string, maxLen: number): string {
 // Gleicht eine TodoWrite-Liste mit dem Board ab: legt neue Tasks an, bewegt
 // bestehende per Reconcile-Pfad an ihre Zielspalte, protokolliert jeden
 // Schritt. Die gesamte Schleife laeuft in EINER Transaktion (Plan 3.9c) --
-// bricht ein Schritt mit einem echten Fehler ab (z.B. die Dependency-Regel
-// aus P1-2, ein blockierter Task darf nicht vorwaerts in eine Arbeitsspalte),
-// wird NICHTS geschrieben. Nur WIP-Verstoesse sind bewusst ausgenommen
-// (werden geloggt, nicht abgelehnt) -- TodoWrite selbst kann nicht abgelehnt
-// werden, der Hook laeuft erst NACHDEM der Agent den Zustand gesetzt hat.
+// bricht ein Schritt mit einem ECHTEN Fehler ab (z.B. eine Zielspalte, die
+// auf diesem Board gar nicht existiert), wird NICHTS geschrieben.
+//
+// Zwei bewusste Ausnahmen, die NICHT die Transaktion abbrechen, weil
+// TodoWrite selbst nicht ablehnbar ist (der Hook laeuft, nachdem der Agent
+// den Zustand bereits gesetzt hat):
+//  - WIP-Verstoesse werden durchgewunken und protokolliert (Ereignis).
+//  - Ein durch eine offene Abhaengigkeit blockierter Task wird uebersprungen,
+//    nicht bewegt (Zustand, kann Stunden/Tage bestehen -- ohne diese Ausnahme
+//    schluege JEDER Sync-Lauf fehl, solange die Abhaengigkeit offen ist;
+//    derselbe Dauerfehler, fuer den P0-5 bereits "Exit 0, stderr" statt
+//    "Exit 1" entschieden hat).
 export function syncTodos(
   db: Database,
   taskService: TaskService,
@@ -71,13 +93,14 @@ export function syncTodos(
   todos: TodoItem[],
 ): SyncReport {
   const transitionService = new TransitionService(db, boardService);
-  const run = db.transaction(() => runSync(taskService, transitionService, todos));
+  const run = db.transaction(() => runSync(taskService, transitionService, boardService, todos));
   return run();
 }
 
 function runSync(
   taskService: TaskService,
   transitionService: TransitionService,
+  boardService: BoardService,
   todos: TodoItem[],
 ): SyncReport {
   // Einmaliger Schnappschuss zu Laufbeginn -- neu angelegte Tasks aus diesem
@@ -86,7 +109,7 @@ function runSync(
   const existingTasks = taskService.listTasks();
   const matchedIds = new Set<string>();
 
-  const report: SyncReport = { created: 0, moved: 0, skipped: 0, wipOverrides: 0 };
+  const report: SyncReport = { created: 0, moved: 0, skipped: 0, wipOverrides: 0, blockedSkips: [] };
 
   for (const todo of todos) {
     const targetColumn = STATUS_TO_COLUMN[todo.status] ?? DEFAULT_COLUMN;
@@ -98,8 +121,7 @@ function runSync(
         report.skipped++;
         continue;
       }
-      report.wipOverrides += reconcileTask(taskService, transitionService, match.id, match.columnId, targetColumn);
-      report.moved++;
+      applyReconcile(taskService, transitionService, boardService, match.id, match.columnId, targetColumn, report, "moved");
     } else {
       const created = taskService.addTask({
         title: truncate(todo.content, TITLE_TRUNCATE_LENGTH),
@@ -107,12 +129,41 @@ function runSync(
         reportedBy: "sync",
       });
       matchedIds.add(created.id);
-      report.wipOverrides += reconcileTask(taskService, transitionService, created.id, created.columnId, targetColumn);
       report.created++;
+      // Der neu angelegte Task selbst kann nicht blockiert sein (Sync setzt
+      // nie dependsOn) -- reconcileTask() prueft trotzdem einheitlich, falls
+      // sich das je aendert. Ein Skip hier zaehlt zusaetzlich zu 'created'
+      // (der Task existiert ja), NICHT als 'moved'.
+      applyReconcile(taskService, transitionService, boardService, created.id, created.columnId, targetColumn, report, null);
     }
   }
 
   return report;
+}
+
+// Fuehrt reconcileTask() aus und traegt das Ergebnis in den Bericht ein.
+// 'onSuccessCounter': welcher Zaehler bei Erfolg erhoeht wird (bei einem neu
+// angelegten Task bereits vorab als 'created' gezaehlt -> null hier).
+function applyReconcile(
+  taskService: TaskService,
+  transitionService: TransitionService,
+  boardService: BoardService,
+  taskId: string,
+  fromColumnId: string,
+  toColumnId: string,
+  report: SyncReport,
+  onSuccessCounter: "moved" | null,
+): void {
+  const result = reconcileTask(taskService, transitionService, boardService, taskId, fromColumnId, toColumnId);
+  if (result.blockedSkip) {
+    report.blockedSkips.push(result.blockedSkip);
+    report.skipped++;
+    return;
+  }
+  report.wipOverrides += result.wipOverrides;
+  if (onSuccessCounter === "moved") {
+    report.moved++;
+  }
 }
 
 // Content-Matching, gehaertet (Plan 3.9b): einzige moegliche Strategie, da
@@ -136,10 +187,17 @@ function findMatch(tasks: Task[], content: string, alreadyMatched: Set<string>):
   return candidates[0]!;
 }
 
+interface ReconcileResult {
+  // Nicht-null: der Task wurde NICHT bewegt (offene Abhaengigkeit), keine
+  // Transition entstanden. Null: der Reconcile ist (ggf. mit WIP-Override)
+  // durchgelaufen.
+  blockedSkip: BlockedSkip | null;
+  wipOverrides: number;
+}
+
 // Bewegt einen Task von seiner aktuellen Spalte zur Zielspalte ueber
 // reconcilePath() -- jeder Zwischenschritt eine eigene, protokollierte
-// Transition mit reportedBy: "sync", reason: "reconcile". Liefert die Anzahl
-// der dabei durchgewunkenen WIP-Verstoesse (Plan 3.9e).
+// Transition mit reportedBy: "sync", reason: "reconcile".
 //
 // Bewusst reconcilePath() statt canMove()/completeTask(): der Sync meldet
 // einen ZIELZUSTAND, keinen Uebergang -- TodoWrite kann nicht ablehnen, weil
@@ -157,13 +215,56 @@ function findMatch(tasks: Task[], content: string, alreadyMatched: Set<string>):
 function reconcileTask(
   taskService: TaskService,
   transitionService: TransitionService,
+  boardService: BoardService,
   taskId: string,
   fromColumnId: string,
   toColumnId: string,
-): number {
+): ReconcileResult {
   const path = transitionService.reconcilePath(fromColumnId, toColumnId);
-  let wipOverrides = 0;
+  if (path.length === 0) {
+    return { blockedSkip: null, wipOverrides: 0 };
+  }
 
+  // Vorabpruefung (dieselbe Technik wie beim WIP-Fund, siehe canMove() unten):
+  // ein blockierter Task darf laut Dependency-Regel (P1-2) nicht vorwaerts in
+  // eine Arbeitsspalte bewegt werden. Anders als WIP ist das kein einmaliges
+  // Ereignis, sondern ein ANDAUERNDER Zustand -- eine offene Abhaengigkeit
+  // kann Stunden oder Tage bestehen. Bei jedem Sync-Lauf erneut daran
+  // abzubrechen (samt Rollback fuer alle unbeteiligten Todos im selben
+  // Payload) waere derselbe Dauerfehler, fuer den P0-5 bereits "Exit 0,
+  // stderr" statt "Exit 1" entschieden hat. Deshalb: ueberspringen, nicht
+  // werfen. Ein WIP-Limit ist eine Kapazitaetsgrenze, die der Sync reissen
+  // darf, weil er nur spiegelt -- eine offene Abhaengigkeit ist eine Tatsache,
+  // der Task ist noch nicht dran; ihn trotzdem zu bewegen waere eine Luege
+  // ueber den Projektzustand.
+  //
+  // Reicht, den ERSTEN Schritt zu pruefen: reconcilePath() liefert entweder
+  // eine Folge lauter Vorwaerts-Schritte oder einen einzelnen Ruecksprung.
+  // isBlocked aendert sich nicht dadurch, dass DIESER Task sich bewegt, also
+  // ist entweder JEDER Vorwaerts-Schritt blockiert oder keiner; ein
+  // Ruecksprung ist von der Regel ohnehin ausgenommen.
+  const task = taskService.getTask(taskId)!;
+  const firstTargetColumn = boardService.getColumn(path[0]!);
+  if (firstTargetColumn) {
+    const blockCheck = taskService.canMoveWhileBlocked(task, firstTargetColumn);
+    if (!blockCheck.allowed) {
+      const terminal = boardService.getTerminalColumn();
+      const openDependencies = taskService
+        .getDependencies(task.id)
+        .filter((d) => !d.archived && d.columnId !== terminal?.id)
+        .map((d) => ({ id: d.id, title: d.title }));
+      return {
+        blockedSkip: { taskId: task.id, title: task.title, openDependencies },
+        wipOverrides: 0,
+      };
+    }
+  }
+  // firstTargetColumn === null (Zielspalte existiert auf diesem Board gar
+  // nicht) ist ein ECHTER Fehler, kein kontrollierter Fall -- der gleich beim
+  // moveTask()-Aufruf unten wirft ("Spalte existiert nicht") und die
+  // Transaktion zu Recht zurueckrollt.
+
+  let wipOverrides = 0;
   for (const stepColumnId of path) {
     // Vorabpruefung (kein Schreibzugriff): zaehlt WIP-Verstoesse fuer den
     // Bericht UND entscheidet, welchen reason-Wert dieser Schritt bekommt.
@@ -183,12 +284,7 @@ function reconcileTask(
     // wipPolicy: "log" laesst NUR WIP-Verstoesse durch (protokolliert als
     // Override) -- die Kettenregel bleibt hart. reconcilePath() liefert aber
     // ausschliesslich Schritte, die genau einen Index vorwaerts oder einen
-    // beliebig weiten Ruecksprung machen, also strukturell immer kettenlegal;
-    // die Dependency-Regel (P1-2) bleibt dagegen scharf -- ein Task, der laut
-    // TodoWrite fertig sein soll, aber im Board noch blockiert ist, laesst
-    // moveTask() hier bewusst werfen (kein wipPolicy-Freifahrtschein dafuer).
-    // Das ist ein "Fehler in der Mitte" im Sinne von 3.9c: die gesamte
-    // Transaktion rollt zurueck, siehe syncTodos().
+    // beliebig weiten Ruecksprung machen, also strukturell immer kettenlegal.
     taskService.moveTask(taskId, stepColumnId, {
       reportedBy: "sync",
       reason: isWipViolation ? undefined : "reconcile",
@@ -196,5 +292,5 @@ function reconcileTask(
     });
   }
 
-  return wipOverrides;
+  return { blockedSkip: null, wipOverrides };
 }
