@@ -13,6 +13,7 @@ import { TagPicker } from "./tag-picker.tsx";
 import { PriorityPicker } from "./priority-picker.tsx";
 import { ArchiveView } from "./archive-view.tsx";
 import { DependencyView } from "./dependency-view.tsx";
+import { BoardPicker } from "./board-picker.tsx";
 import { useBoard, isOrphanTask, resolveEffectiveSort } from "./use-board.ts";
 import { useInputModes, type Mode, type PendingOverride } from "./use-input-modes.ts";
 import { getColumnColor, getPriorityLabel, ACCENT, ORPHAN_COLUMN_ID } from "./theme.ts";
@@ -21,10 +22,21 @@ interface AppProps {
   workingDir: string;
 }
 
-export function App({ workingDir }: AppProps) {
+// Startspalte nach Mount und nach Board-Wechsel (Index 1 = "Todo" im
+// Standard-Spaltenlayout) -- eigener Name statt einer zweiten magischen 1 an
+// zwei Stellen (siehe useState unten und handleBoardSelect).
+const INITIAL_SELECTED_COLUMN = 1;
+
+export function App({ workingDir: initialWorkingDir }: AppProps) {
   const { exit } = useApp();
+  // P3-3: workingDir ist jetzt Zustand statt durchgereichter Prop -- nur so
+  // greift die bestehende Watcher-Cleanup in use-board.ts (useEffect-Deps
+  // [workingDir, refresh]) beim Board-Wechsel wirklich: React raeumt den
+  // Effekt der VORHERIGEN workingDir auf (Watcher schliessen), bevor der
+  // Effekt fuer die neue workingDir laeuft (siehe Bericht an team-lead).
+  const [workingDir, setWorkingDir] = useState(initialWorkingDir);
   const [mode, setMode] = useState<Mode>("board");
-  const [selectedCol, setSelectedCol] = useState(1);
+  const [selectedCol, setSelectedCol] = useState(INITIAL_SELECTED_COLUMN);
   const [selectedRow, setSelectedRow] = useState(0);
   const [statusMsg, setStatusMsg] = useState("");
   const [inputValue, setInputValue] = useState("");
@@ -184,6 +196,29 @@ export function App({ workingDir }: AppProps) {
     setMode("detail");
   };
 
+  // P3-3: Board wechseln. BoardPicker laesst nur 'ok'-Eintraege ueberhaupt an
+  // onSelect durchkommen (siehe board-picker.tsx) -- diese Funktion muss den
+  // Status also nicht nochmal pruefen. Die Zustaende der Board-Ansicht
+  // (Spalte/Zeile/Filter/Detail/Verschieben) gehoeren zum alten Board und
+  // werden zurueckgesetzt (Kanban-Notes hI3444NiI5DG, "Zustand
+  // zuruecksetzen") -- sonst zeigt z.B. die Detailansicht einen Task, den es
+  // im neuen Board nicht gibt.
+  const handleBoardSelect = (entry: import("../cli/board-overview.ts").BoardOverviewEntry) => {
+    setWorkingDir(entry.path);
+    setSelectedCol(INITIAL_SELECTED_COLUMN);
+    setSelectedRow(0);
+    setFilterText("");
+    setDetailTask(null);
+    setMoving(false);
+    setStatusMsg(`Board gewechselt: ${entry.name}`);
+    setMode("board");
+  };
+
+  const handleBoardCancel = () => {
+    setMode("board");
+    setStatusMsg("");
+  };
+
   const detailModes: Mode[] = ["detail", "edit-notes", "edit-tags", "edit-title", "edit-description", "edit-deps", "edit-priority"];
   if (detailModes.includes(mode) && detailTask) return (
     <Box flexDirection="column">
@@ -271,6 +306,9 @@ export function App({ workingDir }: AppProps) {
     />
   );
   if (mode === "help") return <HelpView />;
+  if (mode === "board-picker") return (
+    <BoardPicker currentPath={workingDir} onSelect={handleBoardSelect} onCancel={handleBoardCancel} />
+  );
 
   const handleExportSubmit = async (val: string) => {
     const path = val.trim();

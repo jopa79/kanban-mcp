@@ -108,6 +108,16 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
     MCP-Pfad (`withContext()`) findet weiterhin nicht, `kanban sync`
     schreibt nachweislich nichts in ein Elternboard (Subprocess-Test via
     `Bun.spawnSync`, echter CLI-Aufruf mit `cwd` in einem Unterverzeichnis)
+- TUI: Taste `B` wechselt zwischen registrierten Boards (`src/tui/board-picker.tsx`)
+  - Aggregierte Uebersicht in der Auswahlliste: Name und Task-Zahl je Board,
+    identische Quelle (`readBoardOverview()`) wie `kanban boards`
+  - Fehlender Pfad oder Schema v2 zeigen eine Meldung statt zu wechseln oder
+    abzustuerzen — der bestehende Schema-Guard (`assertSchemaCurrent`) wird
+    dabei nie umgangen, der Versuch wird gar nicht erst gestartet
+  - `workingDir` ist in der TUI jetzt Zustand statt einer durchgereichten Prop
+    — dadurch schliesst der bestehende `fs.watch`-Watcher (`use-board.ts`)
+    beim Wechsel zuverlaessig, bevor der naechste Board geoeffnet wird; kein
+    Watcher-Leck ueber mehrere Wechsel hinweg
 - MCP: Task-Abhaengigkeiten vollstaendig ueber MCP nutzbar (vorher nur bei Erstellung setzbar)
   - `kanban_add_dependency` — Task nachtraeglich von einem anderen abhaengig machen
   - `kanban_remove_dependency` — bestehende Abhaengigkeit aufheben (loest gekuerzte IDs auf)

@@ -19,7 +19,7 @@ export type Mode =
   | "board" | "detail" | "add" | "filter" | "confirm-delete" | "help"
   | "edit-notes" | "edit-tags" | "edit-title" | "edit-description"
   | "archive" | "edit-deps" | "export-path" | "import-path"
-  | "import-confirm" | "confirm-override" | "edit-priority";
+  | "import-confirm" | "confirm-override" | "edit-priority" | "board-picker";
 
 // Ausstehender Override: Ablehnungsgrund (voller Text aus TransitionService,
 // ADR 0002) + die Aktion, die bei 'y' mit override:true wiederholt wird.
@@ -252,5 +252,9 @@ export function useInputModes(args: UseInputModesArgs): void {
       setMode("export-path");
     }
     if (input === "I") { setInputValue(""); setMode("import-path"); }
+    // P3-3: Board-Auswahl oeffnen. Die Auswahl selbst (Registry laden, Guard
+    // fuer Schema v2/fehlende Pfade) lebt in board-picker.tsx -- hier nur der
+    // Moduswechsel, wie bei 'A'/'E'/'I' auch.
+    if (input === "B") { setMode("board-picker"); }
   });
 }
