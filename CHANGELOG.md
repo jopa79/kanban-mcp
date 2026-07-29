@@ -174,6 +174,39 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
     — alle bestehenden Konstruktionsstellen (TUI, MCP, CLI, Sync, Skripte)
     funktionieren ohne Anpassung weiter
   - 24 neue Tests (`tests/task-service-transitions.test.ts`)
+- `reportedBy` als Pflichtfeld (P1-3) in den vier MCP-Tools, die eine
+  Transition erzeugen: `kanban_add_task`, `kanban_add_task_checked`,
+  `kanban_move_task`, `kanban_complete_task`. Wortgleiche Schema-Beschreibung
+  in allen vieren (`src/mcp/schemas.ts`, `reportedBySchema`) — zaehlt
+  konkrete Rollennamen auf (`planer`, `backend`, `frontend`,
+  `code-reviewer`, `teamlead`, `explorer`, sonst `user`) statt nach einem
+  freien String zu fragen: ein Agent, der eine Liste sieht, waehlt daraus,
+  einer der frei gefragt wird, schreibt "claude". Bewusst `z.string()`, kein
+  `z.enum()` — die Rollenliste ist projektspezifisch. Getrennt von
+  `createdBy` (K-3): der Wert landet ausschliesslich in
+  `transitions.reported_by`, nie auf dem Task selbst; `AddTaskInput`/
+  `TaskService.completeTask` bekommen dafuer ein eigenes optionales
+  `reportedBy`-Feld, ohne Fallback auf `createdBy` (Default `"user"`).
+  `kanban_update_task`, `kanban_delete_task` und alle lesenden Tools bleiben
+  unangetastet; `kanban_restore_task` protokolliert weiterhin fest `"user"`
+  (siehe P1-2, keine Regelpruefung fuer Restore). CLI: neues `--by <name>`
+  an `add`/`move`/`done`, Default `"user"`, kein Prompt in der TUI
+- MCP-Ablehnungen tragen jetzt durchgehend `isError: true` (P1-4, ADR 0002).
+  Betraf konkret nur `kanban_add_task_checked` — alle anderen Tools nutzten
+  bereits denselben try/catch, der `TaskService`-Fehler (inkl. der neuen
+  P1-1/P1-2-Ablehnungstexte) automatisch mit `isError: true` durchreicht
+  - `kanban_add_task_checked`: `force` bleibt erhalten (Duplikat-Erkennung
+    ist eine fehlbare Heuristik, `src/core/similarity.ts` — ein WIP-Zaehler
+    ist das nicht), aber verschwindet aus Tool-Beschreibung, `.describe()`
+    und Ablehnungstext — eine Ablehnung, die ihren eigenen Umgehungsweg
+    mitliefert, ist keine Ablehnung. Die Ablehnung nennt jetzt Titel **und
+    IDs** der aehnlichen Tasks (vorher nur Titel), damit ein Agent pruefen
+    kann, ob einer davon sein Anliegen abdeckt, statt zu raten
+  - `TaskService.addTaskChecked`s `rejectionReason` verliert denselben
+    "Verwende --force"-Hinweis (`task-service.ts`)
+  - Neue Tests `tests/mcp-tools.test.ts` (14 Tests) — echter MCP-Client/
+    Server-Roundtrip ueber `InMemoryTransport` (kein Mock), damit die
+    Tool-Antworten genauso getestet werden, wie ein Agent sie sieht
 
 ### Removed
 
@@ -200,8 +233,17 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   und vorwaerts in eine Arbeitsspalte soll (siehe Added). Betroffene
   bestehende Aufrufer, noch nicht angepasst (folgt in eigenen Tasks):
   `src/tui/app.tsx` (`n`/`d`/Verschiebe-Modus — Override-Dialog folgt in
-  P1-5), `src/cli/commands/add.ts` `-c in-progress`-Beispiel im README,
-  `scripts/seed-demo.ts` (legt Tasks z.T. direkt in mittleren Spalten an)
+  P1-5), `scripts/seed-demo.ts` (legt Tasks z.T. direkt in mittleren Spalten
+  an). Das README-Beispiel `-c in-progress` ist mit P1-3 korrigiert (siehe
+  unten)
+- **Breaking (P1-3):** `kanban_add_task`, `kanban_add_task_checked`,
+  `kanban_move_task`, `kanban_complete_task` verlangen jetzt `reportedBy`.
+  Bestehende Agent-Konfigurationen, die diese vier MCP-Tools ohne das Feld
+  aufrufen, scheitern mit einem Zod-Validierungsfehler, bis sie es mitgeben
+- **Breaking (P1-4):** `kanban_add_task_checked` nennt bei einer Ablehnung
+  nicht mehr nur Titel, sondern Titel und IDs der aehnlichen Tasks, und
+  traegt jetzt `isError: true` (vorher fehlte das Flag komplett — eine
+  Ablehnung sah fuer ein Modell wie ein Erfolg mit Hinweis aus)
 - `BoardService` liest Spalten jetzt aus `config.json` statt per SQL aus der
   `columns`-Tabelle (`getColumns`, `getColumn`, `getTerminalColumn`); die
   `columns`-Tabelle entfaellt, `tasks.column_id` hat keinen Fremdschluessel

@@ -8,10 +8,11 @@ export const moveCommand = new Command("move")
   .description("Task in andere Spalte verschieben")
   .argument("<id>", "Task-ID (kann gekuerzt sein)")
   .argument("<column>", "Ziel-Spalte (z.B. in-progress, review, done)")
-  .action((id: string, column: string) => {
+  .option("--by <name>", "Wer meldet diese Aenderung (default: user)")
+  .action((id: string, column: string, options) => {
     try {
       const { taskService } = getContext();
-      const task = taskService.moveTask(id, column);
+      const task = taskService.moveTask(id, column, { reportedBy: options.by });
       success("Task verschoben:");
       console.log("  " + formatTask(task));
     } catch (err) {

@@ -11,6 +11,7 @@ export const addCommand = new Command("add")
   .option("-a, --assignee <name>", "Zugewiesen an")
   .option("-l, --labels <labels>", "Labels (kommagetrennt)")
   .option("-n, --notes <text>", "Markdown-Notizen")
+  .option("--by <name>", "Wer meldet diese Aenderung (default: user)")
   .action((title: string, options) => {
     try {
       const { taskService } = getContext();
@@ -25,6 +26,7 @@ export const addCommand = new Command("add")
         assignedTo: options.assignee,
         labels,
         notes: options.notes,
+        reportedBy: options.by,
       });
 
       success("Task erstellt:");

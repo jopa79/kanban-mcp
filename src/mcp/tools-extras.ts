@@ -2,6 +2,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
 import { withContext } from "./mcp-context.ts";
+import { reportedBySchema } from "./schemas.ts";
 
 export function registerExtraTools(server: McpServer, workingDir: string): void {
   // --- kanban_add_task_checked ---
@@ -9,7 +10,11 @@ export function registerExtraTools(server: McpServer, workingDir: string): void 
     "kanban_add_task_checked",
     {
       title: "Task mit Duplikat-Pruefung erstellen",
-      description: "Task erstellen, aber ablehnen wenn ein aehnlicher Task bereits existiert. Verwende force=true um trotzdem zu erstellen.",
+      // P1-4 (ADR 0002): kein Hinweis auf force hier -- die Beschreibung ist
+      // KEINE Einladung zum Eskalieren. force bleibt im Schema (Duplikat-
+      // Erkennung ist eine fehlbare Heuristik, similarity.ts), aber wer ihn
+      // braucht, kennt ihn bereits -- er wird nicht beworben.
+      description: "Task erstellen, aber ablehnen wenn ein aehnlicher Task bereits existiert.",
       inputSchema: z.object({
         title: z.string().describe("Task-Titel"),
         description: z.string().optional().describe("Task-Beschreibung"),
@@ -18,21 +23,32 @@ export function registerExtraTools(server: McpServer, workingDir: string): void 
         assignedTo: z.string().optional().describe("Zugewiesen an"),
         labels: z.array(z.string()).optional().describe("Labels"),
         notes: z.string().optional().describe("Markdown-Notizen zum Task"),
-        force: z.boolean().optional().describe("Erstellen auch wenn aehnlich"),
+        reportedBy: reportedBySchema,
+        force: z.boolean().optional(),
       }),
     },
-    async ({ title, description, columnId, createdBy, assignedTo, labels, notes, force }) => {
+    async ({ title, description, columnId, createdBy, assignedTo, labels, notes, reportedBy, force }) => {
       try {
         return withContext(workingDir, ({ taskService }) => {
           const result = taskService.addTaskChecked(
-            { title, description, columnId, createdBy, assignedTo, labels, notes },
+            { title, description, columnId, createdBy, assignedTo, labels, notes, reportedBy },
             { force },
           );
-          if (result.rejected) {
-            const similar = result.similarTasks?.map((t: { title: string }) => `"${t.title}"`).join(", ") ?? "";
-            return { content: [{ type: "text", text: `Abgelehnt: aehnlicher Task existiert — ${similar}. Verwende force=true zum Erstellen.` }] };
+          if (result.rejected || !result.task) {
+            // P1-4: Titel UND IDs nennen -- ohne IDs kann der Agent den
+            // bestehenden Task nicht oeffnen und muss raten. Kein force-Hinweis.
+            const lines = (result.similarTasks ?? []).map(
+              (t) => `  [${t.id.slice(0, 8)}] "${t.title}" (${t.columnId})`,
+            );
+            return {
+              content: [{
+                type: "text",
+                text: `Abgelehnt: aehnliche Tasks existieren bereits.\n${lines.join("\n")}\nPruefe, ob einer davon dein Anliegen abdeckt.`,
+              }],
+              isError: true,
+            };
           }
-          return { content: [{ type: "text", text: `Task erstellt: "${result.task!.title}" (ID: ${result.task!.id}) → ${result.task!.columnId}` }] };
+          return { content: [{ type: "text", text: `Task erstellt: "${result.task.title}" (ID: ${result.task.id}) → ${result.task.columnId}` }] };
         });
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
@@ -48,12 +64,13 @@ export function registerExtraTools(server: McpServer, workingDir: string): void 
       description: "Task als erledigt markieren (in Done-Spalte verschieben)",
       inputSchema: z.object({
         id: z.string().describe("Task-ID"),
+        reportedBy: reportedBySchema,
       }),
     },
-    async ({ id }) => {
+    async ({ id, reportedBy }) => {
       try {
         return withContext(workingDir, ({ taskService }) => {
-          const task = taskService.completeTask(id);
+          const task = taskService.completeTask(id, { reportedBy });
           return { content: [{ type: "text", text: `Task abgeschlossen: "${task.title}" (ID: ${task.id}) → ${task.columnId}` }] };
         });
       } catch (err) {

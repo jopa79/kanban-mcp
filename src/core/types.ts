@@ -64,6 +64,11 @@ export interface AddTaskInput {
   labels?: string[];
   dependsOn?: string[];
   notes?: string;
+  // P1-3 (K-3): getrennt von createdBy -- gilt nur fuer die Entstehungs-
+  // Transition, nicht fuer tasks.created_by. Optional auf Service-Ebene
+  // (CLI/TUI/Skripte duerfen es weglassen, Default "user"); an der
+  // MCP-Werkzeugoberflaeche wird es zum Pflichtfeld (siehe tools.ts).
+  reportedBy?: string;
 }
 
 export interface UpdateTaskInput {

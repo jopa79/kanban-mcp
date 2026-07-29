@@ -51,6 +51,20 @@ describe("addTaskChecked", () => {
     expect(result.rejectionReason).toContain("Login Feature");
     expect(result.rejectionReason).toContain("existiert bereits");
   });
+
+  // P1-4 (ADR 0002): der Ablehnungstext darf force nicht mehr bewerben --
+  // ein Ablehnungstext, der seinen eigenen Umgehungsweg mitliefert, ist keine
+  // Ablehnung. Deckt beide Ablehnungspfade ab (exaktes und aehnliches Duplikat).
+  test("rejectionReason erwaehnt 'force' nirgends, weder bei exaktem noch bei aehnlichem Duplikat", () => {
+    ctx = createTestBoard();
+    ctx.taskService.addTask({ title: "Login Feature bauen" });
+
+    const exact = ctx.taskService.addTaskChecked({ title: "Login Feature bauen" });
+    expect(exact.rejectionReason?.toLowerCase()).not.toContain("force");
+
+    const similar = ctx.taskService.addTaskChecked({ title: "Login Feature implementieren" });
+    expect(similar.rejectionReason?.toLowerCase()).not.toContain("force");
+  });
 });
 
 describe("getStatus", () => {

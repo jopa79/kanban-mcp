@@ -6,10 +6,11 @@ import { formatTask, success, error } from "../formatters.ts";
 export const doneCommand = new Command("done")
   .description("Task als erledigt markieren")
   .argument("<id>", "Task-ID (kann gekuerzt sein)")
-  .action((id: string) => {
+  .option("--by <name>", "Wer meldet diese Aenderung (default: user)")
+  .action((id: string, options) => {
     try {
       const { taskService } = getContext();
-      const task = taskService.completeTask(id);
+      const task = taskService.completeTask(id, { reportedBy: options.by });
       success("Task erledigt:");
       console.log("  " + formatTask(task));
     } catch (err) {

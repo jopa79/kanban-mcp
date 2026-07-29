@@ -31,7 +31,7 @@ describe("TaskService — Zustandsmaschine (P1-2)", () => {
     test("protokolliert die Entstehung als Transition mit from_column: null", () => {
       ctx = createTestBoard();
       const transitions = new TransitionService(ctx.db, ctx.boardService);
-      const task = ctx.taskService.addTask({ title: "A", createdBy: "backend" });
+      const task = ctx.taskService.addTask({ title: "A", createdBy: "backend", reportedBy: "backend" });
 
       const history = transitions.history(task.id);
       expect(history).toHaveLength(1);
@@ -39,6 +39,19 @@ describe("TaskService — Zustandsmaschine (P1-2)", () => {
       expect(history[0]!.toColumn).toBe("todo");
       expect(history[0]!.reportedBy).toBe("backend");
       expect(history[0]!.wasOverride).toBe(false);
+    });
+
+    // P1-3 (K-3): reportedBy gilt nur fuer Transitions und ist von createdBy
+    // getrennt -- kein automatischer Fallback von reportedBy auf createdBy,
+    // sonst waeren die beiden Felder faktisch dasselbe.
+    test("reportedBy ist von createdBy getrennt -- faellt ohne eigenen Wert auf 'user' zurueck, nicht auf createdBy", () => {
+      ctx = createTestBoard();
+      const transitions = new TransitionService(ctx.db, ctx.boardService);
+      const task = ctx.taskService.addTask({ title: "A", createdBy: "planer" }); // kein reportedBy
+
+      expect(task.createdBy).toBe("planer");
+      const history = transitions.history(task.id);
+      expect(history[0]!.reportedBy).toBe("user");
     });
   });
 
@@ -149,6 +162,24 @@ describe("TaskService — Zustandsmaschine (P1-2)", () => {
       ctx.taskService.moveTask(task.id, "in-progress");
       ctx.taskService.moveTask(task.id, "review");
       expect(ctx.taskService.completeTask(task.id).columnId).toBe("done");
+    });
+
+    // P1-3: completeTask akzeptiert jetzt optional reportedBy fuer die
+    // Transition -- Default "user" bleibt fuer CLI/TUI/Skripte, die es
+    // weglassen (siehe MoveTaskOptions/addTask, gleiches Muster).
+    test("reportedBy landet in der Transition, Default 'user' ohne Angabe", () => {
+      ctx = createTestBoard();
+      const transitions = new TransitionService(ctx.db, ctx.boardService);
+      const task = ctx.taskService.addTask({ title: "X" });
+      ctx.taskService.moveTask(task.id, "in-progress");
+      ctx.taskService.moveTask(task.id, "review");
+
+      ctx.taskService.completeTask(task.id, { reportedBy: "backend" });
+
+      const history = transitions.history(task.id);
+      const last = history[history.length - 1]!;
+      expect(last.toColumn).toBe("done");
+      expect(last.reportedBy).toBe("backend");
     });
 
     test("completeTask geht nicht durch das oeffentliche moveTask (keine doppelte Kettenpruefung)", () => {

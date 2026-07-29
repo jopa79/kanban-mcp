@@ -30,16 +30,21 @@ bun run src/index.ts init "Mein Projekt"
 ## CLI Commands
 
 ```bash
-# Task erstellen
-kanban add "Task Titel" -d "Beschreibung" -c in-progress
+# Task erstellen -- nur Backlog/Todo sind Eintrittsspalten (Zustandsmaschine, 0.2.0)
+kanban add "Task Titel" -d "Beschreibung" -c backlog
 
 # Tasks auflisten
 kanban list                  # Alle Tasks
 kanban list -c todo          # Nur aus Todo-Spalte
 
-# Task verschieben / abschliessen
+# Task verschieben / abschliessen -- die Spaltenkette ist vorwaerts strikt
+# (max. ein Schritt), rueckwaerts frei; done braucht Review davor
 kanban move <id> in-progress
 kanban done <id>
+
+# --by <name> an add/move/done: wer meldet die Aenderung (default: user).
+# Wird in transitions.reported_by protokolliert, nicht auf dem Task selbst.
+kanban move <id> in-progress --by backend
 
 # Task aendern / loeschen
 kanban delete <id>
@@ -97,14 +102,14 @@ Als Claude Code MCP Server registrieren (`~/.claude/settings.json`):
 | Tool | Beschreibung |
 |---|---|
 | `kanban_init` | Board initialisieren |
-| `kanban_add_task` | Task erstellen |
-| `kanban_add_task_checked` | Task mit Duplikat-Pruefung erstellen |
+| `kanban_add_task` | Task erstellen (Pflichtfeld `reportedBy`, nur Backlog/Todo) |
+| `kanban_add_task_checked` | Task mit Duplikat-Pruefung erstellen (Pflichtfeld `reportedBy`) |
 | `kanban_get_task` | Task per ID abrufen |
 | `kanban_list_tasks` | Tasks auflisten (mit Filtern) |
-| `kanban_move_task` | Task verschieben |
+| `kanban_move_task` | Task verschieben (Pflichtfeld `reportedBy`) |
 | `kanban_update_task` | Task-Eigenschaften aendern |
 | `kanban_delete_task` | Task loeschen |
-| `kanban_complete_task` | Task abschliessen |
+| `kanban_complete_task` | Task abschliessen (Pflichtfeld `reportedBy`, nur aus Review) |
 | `kanban_status` | Board-Uebersicht |
 | `kanban_archive_tasks` | Tasks archivieren |
 | `kanban_restore_task` | Archivierten Task wiederherstellen |
@@ -112,6 +117,23 @@ Als Claude Code MCP Server registrieren (`~/.claude/settings.json`):
 | `kanban_archive_stats` | Archiv-Statistiken |
 | `kanban_export_board` | Board als JSON exportieren |
 | `kanban_import_board` | Board aus JSON importieren |
+
+**`reportedBy`** (seit 0.2.0, Breaking Change): die vier oben markierten
+Tools verlangen den Rollennamen des aufrufenden Agents (`planer`, `backend`,
+`frontend`, `code-reviewer`, `teamlead`, `explorer`; bei direkter Nutzung
+durch einen Menschen `user`). Der Wert landet ausschliesslich in der
+Transitions-Historie des Tasks, nicht auf dem Task selbst. Aufrufe ohne
+`reportedBy` scheitern mit einem Validierungsfehler. In CLI und TUI bleibt es
+optional (`--by <name>`, Default `user`).
+
+**Zustandsmaschine** (seit 0.2.0, Breaking Change): `kanban_add_task`
+akzeptiert nur noch Spalten mit `allowEntry: true` (Backlog, Todo im
+Default-Board). `kanban_move_task` und `kanban_complete_task` koennen
+ablehnen — die Spaltenkette ist vorwaerts strikt (maximal ein Schritt),
+rueckwaerts beliebig frei, und `kanban_complete_task` verlangt, dass der Task
+in der Spalte direkt vor der Terminal-Spalte steht (Default: Review). Jede
+Ablehnung kommt mit `isError: true` und nennt den naechsten gueltigen
+Schritt.
 
 ## Skills
 

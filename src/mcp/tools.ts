@@ -6,6 +6,7 @@ import { withContext } from "./mcp-context.ts";
 import { registerArchiveTools } from "./tools-archive.ts";
 import { registerExtraTools } from "./tools-extras.ts";
 import { registerExportTools } from "./tools-export.ts";
+import { reportedBySchema } from "./schemas.ts";
 
 // Alle Tools beim Server registrieren
 export function registerTools(server: McpServer, workingDir: string): void {
@@ -47,13 +48,14 @@ export function registerTools(server: McpServer, workingDir: string): void {
         labels: z.array(z.string()).optional().describe("Labels"),
         dependsOn: z.array(z.string()).optional().describe("Abhaengigkeiten (Task-IDs)"),
         notes: z.string().optional().describe("Markdown-Notizen zum Task"),
+        reportedBy: reportedBySchema,
       }),
     },
-    async ({ title, description, columnId, createdBy, assignedTo, labels, dependsOn, notes }) => {
+    async ({ title, description, columnId, createdBy, assignedTo, labels, dependsOn, notes, reportedBy }) => {
       try {
         return withContext(workingDir, ({ taskService }) => {
           const task = taskService.addTask({
-            title, description, columnId, createdBy, assignedTo, labels, dependsOn, notes,
+            title, description, columnId, createdBy, assignedTo, labels, dependsOn, notes, reportedBy,
           });
           return { content: [{ type: "text", text: `Task erstellt: "${task.title}" (ID: ${task.id}) → ${task.columnId}` }] };
         });
@@ -128,12 +130,13 @@ export function registerTools(server: McpServer, workingDir: string): void {
       inputSchema: z.object({
         id: z.string().describe("Task-ID"),
         columnId: z.string().describe("Ziel-Spalte (z.B. todo, in-progress, review, done)"),
+        reportedBy: reportedBySchema,
       }),
     },
-    async ({ id, columnId }) => {
+    async ({ id, columnId, reportedBy }) => {
       try {
         return withContext(workingDir, ({ taskService }) => {
-          const task = taskService.moveTask(id, columnId);
+          const task = taskService.moveTask(id, columnId, { reportedBy });
           return { content: [{ type: "text", text: `Task verschoben: "${task.title}" (ID: ${task.id}) → ${task.columnId}` }] };
         });
       } catch (err) {

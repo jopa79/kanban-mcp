@@ -72,8 +72,10 @@ export class TaskService extends ArchiveService {
     }
 
     // Entstehung protokollieren: from_column = NULL markiert den Task-Ursprung
-    // (siehe rowToTransition / Plan Abschnitt 2.1).
-    this.transitionService.log(id, null, columnId, input.createdBy ?? "user", null, false);
+    // (siehe rowToTransition / Plan Abschnitt 2.1). reportedBy ist bewusst
+    // getrennt von createdBy (K-3, P1-3) -- kein Fallback auf createdBy, sonst
+    // waeren die beiden Felder faktisch dasselbe.
+    this.transitionService.log(id, null, columnId, input.reportedBy ?? "user", null, false);
 
     return this.getTask(id)!;
   }
@@ -100,11 +102,13 @@ export class TaskService extends ArchiveService {
     }
 
     if (similarTasks.length > 0 && !options?.force) {
+      // P1-4 (ADR 0002): kein Hinweis auf --force hier -- ein Ablehnungstext,
+      // der seinen eigenen Umgehungsweg mitliefert, ist keine Ablehnung.
       const titles = similarTasks.map((t) => `[${t.id.slice(0, 8)}] "${t.title}"`).join(", ");
       return {
         task: null,
         rejected: true,
-        rejectionReason: `Aehnliche Tasks gefunden: ${titles}. Verwende --force zum Erstellen.`,
+        rejectionReason: `Aehnliche Tasks gefunden: ${titles}.`,
         similarTasks,
       };
     }
@@ -348,7 +352,9 @@ export class TaskService extends ArchiveService {
   // vor der Terminal-Spalte) und die Dependency-Regel, bewegt dann direkt
   // ueber applyMove -- NICHT ueber das oeffentliche moveTask(), das wuerde
   // canMove ein zweites Mal pruefen (siehe applyMove-Kommentar).
-  completeTask(id: string): Task {
+  // opts.reportedBy optional (P1-3), Default "user" -- fuer CLI/TUI/Skripte,
+  // die es weglassen; die MCP-Werkzeugoberflaeche macht es zum Pflichtfeld.
+  completeTask(id: string, opts?: { reportedBy?: string }): Task {
     const task = this.getTask(id);
     if (!task) throw new Error(`Task '${id}' nicht gefunden`);
 
@@ -365,7 +371,11 @@ export class TaskService extends ArchiveService {
       throw new Error(blockCheck.reason);
     }
 
-    return this.applyMove(task, terminal.id, { reportedBy: "user", reason: null, wasOverride: false });
+    return this.applyMove(task, terminal.id, {
+      reportedBy: opts?.reportedBy ?? "user",
+      reason: null,
+      wasOverride: false,
+    });
   }
 
   // Abhaengigkeiten: Tasks die diesen Task blockieren
