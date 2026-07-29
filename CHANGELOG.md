@@ -86,6 +86,28 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
     - Reine Lesezugriffe: jede Board-DB wird nur fuer die Dauer der Pruefung
       geoeffnet und sofort wieder geschlossen, keine parallel offenen
       Verbindungen ueber Board-Grenzen hinweg
+- Aufwaertssuche fuer die Board-Auffindung (P3-2, Plan Abschnitt 5.4) —
+  `kanban list` & Co. funktionieren jetzt auch aus einem Unterverzeichnis
+  eines Projekts, analog zu `git`
+  - `findBoardUpwards()` (`src/core/db.ts`) sucht von `cwd` aufwaerts, bis ein
+    Board gefunden wird oder ein `.git`-Verzeichnis die Projektgrenze
+    markiert (wird selbst noch geprueft, dann Abbruch); ohne Git-Repo
+    terminiert die Suche hart am Dateisystem-Root statt bis `/` zu laufen
+  - Betrifft alle Kommandos ueber `getContext()` (`list`, `add`, `update`,
+    `move`, `done`, `status`, `delete`, `get`, `note`, `archive`, `restore`,
+    `purge`, `export`, `import`) sowie `kanban tui`
+  - **Bewusst NICHT betroffen**: der MCP-Server (`mcp-context.ts` bleibt
+    unangetastet — die Verzeichnisbindung ist dort eine Isolationsgrenze
+    zwischen Projekten, kein Mangel), `kanban sync` (Entscheidung E-2 — ein
+    automatischer Hook mit einem von Claude Code gesetzten `cwd` darf nie
+    still ins Board eines Elternprojekts schreiben) sowie `kanban
+    migrate`/`kanban init` (die einzige irreversible bzw. eine anlegende
+    Operation — wer sie anstoesst, soll dort stehen, wo sie wirkt)
+  - 8 neue Tests (`tests/find-board.test.ts`), davon drei automatisierte
+    Abgrenzungsnachweise: CLI-Pfad (`getContext()`) findet aufwaerts,
+    MCP-Pfad (`withContext()`) findet weiterhin nicht, `kanban sync`
+    schreibt nachweislich nichts in ein Elternboard (Subprocess-Test via
+    `Bun.spawnSync`, echter CLI-Aufruf mit `cwd` in einem Unterverzeichnis)
 - MCP: Task-Abhaengigkeiten vollstaendig ueber MCP nutzbar (vorher nur bei Erstellung setzbar)
   - `kanban_add_dependency` — Task nachtraeglich von einem anderen abhaengig machen
   - `kanban_remove_dependency` — bestehende Abhaengigkeit aufheben (loest gekuerzte IDs auf)

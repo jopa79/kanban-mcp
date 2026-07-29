@@ -1,7 +1,7 @@
 // SQLite Datenbank Setup und Migration
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { BoardConfig, ColumnConfig } from "./types.ts";
 import { validateBoardConfig } from "./types.ts";
 
@@ -233,4 +233,41 @@ export function getBoardPaths(projectDir: string) {
     dbPath: join(kanbanDir, "board.db"),
     configPath: join(kanbanDir, "config.json"),
   };
+}
+
+// Sucht von 'startDir' aufwaerts nach einem Board (Plan Abschnitt 5.4, P3-2).
+// Grenze ist der naechste Ordner mit '.git' -- das ist die Projektgrenze, die
+// in diesem Kontext ohnehin gilt. Dieser Ordner wird noch selbst auf ein Board
+// geprueft (ein Board direkt im Git-Root soll natuerlich gefunden werden),
+// danach bricht die Suche ab. Gibt es kein Git-Repository, terminiert die
+// Suche zusaetzlich hart am Dateisystem-Root -- sonst liefe sie bei einem
+// Projekt ausserhalb eines Git-Repos bis '/'.
+//
+// Regel fuer die Aufrufer (nicht in dieser Funktion durchgesetzt, siehe dort):
+// LESEN und ALLTAEGLICHES SCHREIBEN duerfen aufwaerts suchen -- steht man im
+// falschen Unterordner, bekommt man trotzdem das richtige Board, niemand
+// nimmt Schaden. IRREVERSIBLE Operationen duerfen es NICHT: 'kanban migrate'
+// formt Schema unwiderruflich um (Tabelle loeschen, Daten in eine Datei
+// ueberfuehren) -- wer das anstoesst, soll dort stehen, wo migriert wird,
+// nicht aus einem Unterverzeichnis heraus das Elternprojekt treffen.
+// 'kanban init' faellt aus demselben Grund heraus: es legt an, wo man steht,
+// nicht wo ein Elternprojekt liegt.
+//
+// NUR fuer CLI (cli/context.ts) und TUI (cli/commands/tui.ts). Der MCP-Server
+// (mcp-context.ts) und 'kanban sync' (E-2) pruefen weiterhin exakt -- die
+// Verzeichnisbindung ist dort eine Isolationsgrenze zwischen Projekten, kein
+// Mangel.
+export function findBoardUpwards(startDir: string): string | null {
+  let dir = resolve(startDir);
+
+  while (true) {
+    if (boardExists(dir)) return dir;
+
+    if (existsSync(join(dir, ".git"))) return null; // Projektgrenze erreicht, kein Board gefunden
+
+    const parent = dirname(dir);
+    if (parent === dir) return null; // Dateisystem-Root erreicht, kein Git-Repo unterwegs
+
+    dir = parent;
+  }
 }

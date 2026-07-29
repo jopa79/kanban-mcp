@@ -3,6 +3,18 @@
 // Bewusst OHNE getContext()/openDb(): der Schema-Guard in db.ts wuerde ein
 // v2-Board sofort ablehnen. 'kanban migrate' ist von diesem Guard explizit
 // ausgenommen und arbeitet direkt mit migrate-v3.ts.
+//
+// Bewusst OHNE findBoardUpwards() (P3-2, Plan Abschnitt 5.4): 'kanban
+// migrate' ist die einzige irreversible Operation im Werkzeug -- sie loescht
+// eine Tabelle und ueberfuehrt Daten unwiderruflich in eine neue Datei. Bei
+// 'kanban list' ist Aufwaertssuche reine Bequemlichkeit: steht man im
+// falschen Unterordner, bekommt man trotzdem das richtige Board, niemand
+// nimmt Schaden. Bei 'migrate' wuerde dasselbe Verhalten bedeuten, dass ein
+// Tippfehler im Arbeitsverzeichnis das Schema des Elternprojekts umformt.
+// Genau bei dieser Operation ist "welches Board meinst du" keine Huerde,
+// sondern die Schutzfunktion -- wer migrieren will, soll dort stehen, wo
+// migriert wird. 'kanban init' faellt aus demselben Grund heraus (legt an,
+// wo man steht, nicht wo ein Elternprojekt liegt).
 import { Command } from "commander";
 import { boardExists, getBoardPaths } from "../../core/db.ts";
 import { migrateToV3, MigrationAbortedError } from "../../core/migrate-v3.ts";
