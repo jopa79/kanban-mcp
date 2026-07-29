@@ -24,11 +24,20 @@ export function getContext(cwd?: string): CliContext {
   }
 
   const paths = getBoardPaths(projectDir);
-  const db = openDb(paths.dbPath);
-  const config: BoardConfig = loadBoardConfig(paths.configPath);
-  const boardService = new BoardService(db, config);
-  const notesService = new NotesService(paths.kanbanDir);
-  const taskService = new TaskService(db, boardService, notesService);
 
-  return { boardService, taskService, notesService, config, kanbanDir: paths.kanbanDir };
+  // Schema-Guard (P0-5) oder eine kaputte config.json werfen hier —
+  // einheitliche, formatierte CLI-Fehlerausgabe statt Stacktrace, analog zur
+  // 'kein Board'-Pruefung oben.
+  try {
+    const db = openDb(paths.dbPath);
+    const config: BoardConfig = loadBoardConfig(paths.configPath);
+    const boardService = new BoardService(db, config);
+    const notesService = new NotesService(paths.kanbanDir);
+    const taskService = new TaskService(db, boardService, notesService);
+
+    return { boardService, taskService, notesService, config, kanbanDir: paths.kanbanDir };
+  } catch (err) {
+    error((err as Error).message);
+    process.exit(1);
+  }
 }

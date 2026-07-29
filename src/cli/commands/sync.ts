@@ -1,6 +1,7 @@
 // CLI Command: kanban sync
 // Liest TodoWrite Hook-Input von stdin und synchronisiert ins Board
 import { Command } from "commander";
+import type { Database } from "bun:sqlite";
 import { boardExists, openDb, getBoardPaths, loadBoardConfig } from "../../core/db.ts";
 import { BoardService } from "../../core/board-service.ts";
 import { TaskService } from "../../core/task-service.ts";
@@ -68,11 +69,27 @@ export const syncCommand = new Command("sync")
     }
 
     const paths = getBoardPaths(cwd);
-    const db = openDb(paths.dbPath);
-    const config = loadBoardConfig(paths.configPath);
-    const boardService = new BoardService(db, config);
-    const notesService = new NotesService(paths.kanbanDir);
-    const taskService = new TaskService(db, boardService, notesService);
+
+    // DB oeffnen + Services aufbauen. Schema-Guard (P0-5) oder eine kaputte
+    // config.json werfen hier — ein Hook, der einen Agenten-Turn mit Exit 1
+    // stoert, richtet mehr Schaden an als ein ausgefallener Sync. Deshalb
+    // Exit 0 mit Meldung auf stderr, dieselbe Konvention wie oben bei
+    // fehlendem Board (dort still, hier mit sichtbarer Meldung — das Board
+    // existiert ja, laesst sich nur nicht oeffnen).
+    let db: Database;
+    let boardService: BoardService;
+    let notesService: NotesService;
+    let taskService: TaskService;
+    try {
+      db = openDb(paths.dbPath);
+      const config = loadBoardConfig(paths.configPath);
+      boardService = new BoardService(db, config);
+      notesService = new NotesService(paths.kanbanDir);
+      taskService = new TaskService(db, boardService, notesService);
+    } catch (err) {
+      console.error(`kanban-mcp sync: ${(err as Error).message}`);
+      process.exit(0);
+    }
 
     let created = 0;
     let moved = 0;

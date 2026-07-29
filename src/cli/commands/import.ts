@@ -9,8 +9,9 @@ export const importCommand = new Command("import")
   .option("--force", "Bestehendes Board ueberschreiben")
   .action(async (zipPath: string, options) => {
     try {
-      await importBoard(process.cwd(), zipPath, { force: options.force });
+      const report = await importBoard(process.cwd(), zipPath, { force: options.force });
       success("Board erfolgreich importiert");
+      if (report.note) console.log(report.note);
     } catch (err) {
       error((err as Error).message);
       process.exit(1);

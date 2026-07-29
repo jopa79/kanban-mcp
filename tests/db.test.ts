@@ -4,7 +4,12 @@ import { mkdtempSync, rmSync, existsSync, mkdirSync, readFileSync } from "node:f
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Database } from "bun:sqlite";
-import { initBoard, boardExists, getBoardPaths, openDb, loadBoardConfig } from "../src/core/db.ts";
+import { initBoard, boardExists, getBoardPaths, openDb, loadBoardConfig, assertSchemaCurrent } from "../src/core/db.ts";
+
+// Escaped fuer den Einsatz in RegExp — Temp-Pfade koennen Regex-Sonderzeichen enthalten
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 describe("db", () => {
   const dirs: string[] = [];
@@ -119,7 +124,7 @@ describe("db", () => {
     expect(terminal[0]!.id).toBe("done");
   });
 
-  test("openDb wirft Fehler bei veralteter Schema-Version (Notbremse vor P0-4/P0-5)", () => {
+  test("openDb wirft Fehler bei veralteter Schema-Version (P0-5 Schema-Guard)", () => {
     const dir = tmpDir();
     const kanbanDir = join(dir, ".kanban");
     mkdirSync(kanbanDir, { recursive: true });
@@ -146,6 +151,91 @@ describe("db", () => {
     staleDb.close();
 
     expect(() => openDb(dbPath)).toThrow(dbPath);
+  });
+
+  // --- P0-5: assertSchemaCurrent (ersetzt die P0-1-Notbremse assertSchemaNotStale) ---
+
+  describe("assertSchemaCurrent", () => {
+    function freshDbAt(dir: string): { db: Database; dbPath: string } {
+      const kanbanDir = join(dir, ".kanban");
+      mkdirSync(kanbanDir, { recursive: true });
+      const dbPath = join(kanbanDir, "board.db");
+      return { db: new Database(dbPath), dbPath };
+    }
+
+    function withVersion(db: Database, version: number): void {
+      db.run("CREATE TABLE schema_version (version INTEGER NOT NULL)");
+      db.run("INSERT INTO schema_version (version) VALUES (?)", [version]);
+    }
+
+    test("ist von db.ts exportiert und direkt aufrufbar (ohne openDb)", () => {
+      const dir = tmpDir();
+      const { db, dbPath } = freshDbAt(dir);
+      withVersion(db, 2);
+
+      expect(() => assertSchemaCurrent(db, dbPath)).toThrow(/kanban migrate/);
+      db.close();
+    });
+
+    test("Meldung bei zu niedriger Version nennt Projektordner fuer 'kanban migrate'", () => {
+      const dir = tmpDir();
+      const { db, dbPath } = freshDbAt(dir);
+      withVersion(db, 2);
+
+      // dbPath ist '<projectDir>/.kanban/board.db' — die Meldung soll den
+      // Befehl im Projektordner verorten, nicht nur die DB-Datei nennen.
+      expect(() => assertSchemaCurrent(db, dbPath)).toThrow(
+        new RegExp(`kanban migrate' in ${escapeRegex(dir)} aus`),
+      );
+      db.close();
+    });
+
+    test("wirft eigene Meldung wenn die Board-Version hoeher ist als der Client kennt", () => {
+      const dir = tmpDir();
+      const { db, dbPath } = freshDbAt(dir);
+      withVersion(db, 4);
+
+      let caught: Error | null = null;
+      try {
+        assertSchemaCurrent(db, dbPath);
+      } catch (err) {
+        caught = err as Error;
+      }
+
+      expect(caught).not.toBeNull();
+      expect(caught!.message).toMatch(/hoechstens 3/);
+      expect(caught!.message).toMatch(/Aktualisiere kanban-mcp/);
+      // Der umgekehrte Fall (aelterer Client, neueres Board) braucht einen
+      // anderen Rat als 'kanban migrate' — das waere hier falsch.
+      expect(caught!.message).not.toMatch(/kanban migrate/);
+      db.close();
+    });
+
+    test("wirft nicht bei aktueller Version (3)", () => {
+      const dir = tmpDir();
+      const { db, dbPath } = freshDbAt(dir);
+      withVersion(db, 3);
+
+      expect(() => assertSchemaCurrent(db, dbPath)).not.toThrow();
+      db.close();
+    });
+
+    test("wirft nicht wenn schema_version-Tabelle fehlt (frische DB vor createSchema)", () => {
+      const dir = tmpDir();
+      const { db, dbPath } = freshDbAt(dir);
+
+      expect(() => assertSchemaCurrent(db, dbPath)).not.toThrow();
+      db.close();
+    });
+
+    test("openDb wirft dieselbe 'zu hoch'-Meldung wenn die Board-Version den Client uebersteigt", () => {
+      const dir = tmpDir();
+      const { db, dbPath } = freshDbAt(dir);
+      withVersion(db, 4);
+      db.close();
+
+      expect(() => openDb(dbPath)).toThrow(/hoechstens 3/);
+    });
   });
 
   test("busy_timeout wird pro Connection gesetzt", () => {

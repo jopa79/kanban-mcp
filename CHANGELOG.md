@@ -84,6 +84,23 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   - Exportiert: Config, Spalten, Tasks (inkl. archivierte), Dependencies, Markdown-Notes
   - Import validiert Schema-Version und Dependencies auf existierende Tasks
   - TUI: `E` = Board exportieren, `I` = Board importieren (mit Ueberschreib-Bestätigung)
+  - Export-Format v3 (P0-6): `transitions` sowie `priority`/`dueDate` pro Task
+    mit im Export; Spalten als geordnetes Array ohne `position`-Feld (analog
+    `config.json`, ADR 0001) zusaetzlich zum vollstaendigen `config`-Objekt —
+    ein Export bleibt ein vollstaendiger, eigenstaendig lesbarer Snapshot.
+    Bewusst **kein** `sourceId`/`source_id` (siehe Plan Abschnitt 0.1)
+  - v2-Import (Pflicht, Rueckwaerts-Kompatibilitaet): ein vor der
+    Schema-v3-Migration erzeugtes ZIP landet direkt als v3-Board, `kanban
+    migrate` ist danach nicht mehr noetig. Spalten-Uebersetzung identisch zur
+    Logik aus `kanban migrate` (P0-4, `deriveColumnConfigs` wiederverwendet):
+    nach `position` sortiert, Array-Reihenfolge wird zur Ordnung, die ersten
+    beiden Spalten werden Eintrittsspalten; `transitions`/`priority`/`dueDate`
+    bleiben leer bzw. NULL. Import meldet, welche Spalten Eintrittsspalten
+    wurden
+  - `importBoard()` liefert jetzt einen `ImportReport` (Quell-Version,
+    optionaler Hinweistext) statt `void` — CLI und MCP geben den Hinweistext
+    mit aus; die Praesentation bleibt beim Aufrufer, der Service loggt nicht
+    selbst (analog `MigrationReport` in `migrate-v3.ts`)
 - Markdown-Notizen pro Task (`.kanban/notes/<id>.md`)
   - `kanban add -n "text"` — Notizen beim Erstellen mitgeben
   - `kanban note <id>` — Notizen im `$EDITOR` oeffnen
@@ -99,14 +116,23 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   `columns`-Tabelle entfaellt, `tasks.column_id` hat keinen Fremdschluessel
   mehr darauf. `getColumnTaskCount` bleibt SQL — zaehlt Tasks, nicht Spalten
 - DB-Schema-Version 2 → 3. `openDb()` migriert nicht mehr automatisch beim
-  Oeffnen (bisheriges `migrateDb()` entfernt) — bei einer aelteren
-  Schema-Version bricht das Oeffnen mit Pfad und Hinweis auf `kanban migrate`
-  ab. Das Migrationskommando existiert jetzt (`kanban migrate`, siehe Added);
-  bis ein Board migriert ist, bleibt es bei diesem Abbruch beim Oeffnen
-- Bekannte Einschraenkung (vorerst): `kanban import` eines v2-ZIP-Archivs
-  schreibt Spalten noch in die nicht mehr existierende `columns`-Tabelle und
-  schlaegt deshalb aktuell fehl. v2-Import-Kompatibilitaet ist als eigener
-  Task vorgemerkt
+  Oeffnen (bisheriges `migrateDb()` entfernt) — `assertSchemaCurrent()` in
+  `db.ts` (P0-5, exportiert, ersetzt die P0-1-Notbremse
+  `assertSchemaNotStale`) prueft bei jedem Oeffnen die Version und verweigert
+  den Start bei Abweichung. Eine zu niedrige Version nennt Pfad und
+  Projektordner fuer `kanban migrate`; eine zu hohe Version (aelterer Client
+  an einem neueren Board) bekommt eine eigene Meldung ("Aktualisiere
+  kanban-mcp") statt des dort falschen Migrations-Rats
+  - Greift einheitlich an allen Einstiegspfaden: CLI (`kanban list` etc.) und
+    TUI brechen formatiert mit Exit 1 ab, MCP-Tools liefern `isError: true`,
+    `kanban export` verweigert sich ohne ZIP zu erzeugen
+  - Ausnahme `kanban sync`: Meldung auf **stderr**, **Exit 0** — ein Hook, der
+    einen Agenten-Turn mit Exit 1 stoert, richtet mehr Schaden an als ein
+    ausgefallener Sync (bestehende Konvention aus P0-1 fortgesetzt)
+  - Ausgenommen (rufen `openDb()` bewusst nicht auf): `kanban migrate` selbst,
+    `initBoard()`, `importBoard()` — legen die DB immer frisch als v3 an
+  - Das Migrationskommando existiert (`kanban migrate`, siehe Added); bis ein
+    Board migriert ist, bleibt es bei diesem Abbruch beim Oeffnen
 
 ### Fixed
 

@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { initBoard, openDb, getBoardPaths } from "../src/core/db.ts";
-import { withContext } from "../src/mcp/mcp-context.ts";
+import { withContext, getContext } from "../src/mcp/mcp-context.ts";
+import { createLegacyV2Board, type LegacyBoardContext } from "./helpers.ts";
 
 describe("withContext", () => {
   let dir: string;
@@ -70,6 +71,26 @@ describe("withContext", () => {
       expect(ctx.taskService).toBeDefined();
       expect(ctx.notesService).toBeDefined();
       expect(ctx.config).toBeDefined();
+    });
+  });
+
+  // --- P0-5: Schema-Guard greift auch ueber withContext/getContext (MCP-Pfad) ---
+  describe("Schema-Guard (P0-5)", () => {
+    let legacy: LegacyBoardContext | undefined;
+    afterEach(() => legacy?.cleanup());
+
+    test("withContext wirft Schema-Guard-Fehler bei einem unmigrierten v2-Board", () => {
+      legacy = createLegacyV2Board();
+
+      expect(() =>
+        withContext(legacy!.dir, (ctx) => ctx.taskService.listTasks({}))
+      ).toThrow(/kanban migrate/);
+    });
+
+    test("getContext wirft Schema-Guard-Fehler bei einem unmigrierten v2-Board", () => {
+      legacy = createLegacyV2Board();
+
+      expect(() => getContext(legacy!.dir)).toThrow(/kanban migrate/);
     });
   });
 });

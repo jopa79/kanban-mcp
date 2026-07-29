@@ -36,8 +36,10 @@ import {
 
 // Re-Export: Die Aufteilung in zwei Dateien ist ein internes
 // Implementierungsdetail (Dateigrenze, Single Responsibility) — CLI und Tests
-// importieren weiterhin nur aus 'migrate-v3.ts'.
-export { deriveColumnConfigs, MigrationAbortedError, precheckMigration };
+// importieren weiterhin nur aus 'migrate-v3.ts'. TARGET_SCHEMA_VERSION zusaetzlich
+// re-exportiert seit P0-6: export-service.ts braucht dieselbe Zielversion fuer
+// den v2-Import, ohne eine zweite Quelle der Wahrheit anzulegen.
+export { deriveColumnConfigs, MigrationAbortedError, precheckMigration, TARGET_SCHEMA_VERSION };
 export type { LegacyColumnRow, MigrationPrecheck };
 
 export interface MigrationReport {

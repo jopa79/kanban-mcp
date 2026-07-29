@@ -37,8 +37,11 @@ export function registerExportTools(server: McpServer, workingDir: string): void
     },
     async ({ zipPath, force }) => {
       try {
-        await importBoard(workingDir, zipPath, { force });
-        return { content: [{ type: "text", text: "Board erfolgreich importiert" }] };
+        const report = await importBoard(workingDir, zipPath, { force });
+        const text = report.note
+          ? `Board erfolgreich importiert\n${report.note}`
+          : "Board erfolgreich importiert";
+        return { content: [{ type: "text", text }] };
       } catch (err) {
         return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
       }

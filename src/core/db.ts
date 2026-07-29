@@ -1,7 +1,7 @@
 // SQLite Datenbank Setup und Migration
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { BoardConfig, ColumnConfig } from "./types.ts";
 import { validateBoardConfig } from "./types.ts";
 
@@ -31,18 +31,28 @@ export function openDb(dbPath: string): Database {
   }
   // foreign_keys muss pro Connection gesetzt werden (nicht persistent)
   db.run("PRAGMA foreign_keys = ON");
-  assertSchemaNotStale(db, dbPath);
+  assertSchemaCurrent(db, dbPath);
   return db;
 }
 
-// Notbremse (P0-1, vorlaeufig): migrateDb() lief frueher unbeaufsichtigt in jedem
-// openDb() mit — das entfaellt, Migration ist jetzt explizit ueber 'kanban migrate'
-// (P0-4). Damit zwischen diesem Task und dem umfassenden Schema-Guard aus P0-5
-// niemand ein bestehendes v2-Board still mit v3-Code oeffnet, bricht das Oeffnen
-// hier hart ab, wenn die Schema-Version veraltet ist. Eine neue, noch leere DB
-// (keine schema_version-Tabelle) ist kein Fehlerfall — createSchema() legt sie
-// gleich an. P0-5 ersetzt diesen Block durch den vollstaendigeren Guard.
-function assertSchemaNotStale(db: Database, dbPath: string): void {
+// Schema-Guard (P0-5): ersetzt die P0-1-Notbremse 'assertSchemaNotStale'.
+// migrateDb() lief frueher unbeaufsichtigt in jedem openDb() mit — das
+// entfaellt seit P0-1, Migration ist jetzt explizit ueber 'kanban migrate'
+// (P0-4). Jeder Pfad, der ueber openDb() geht (CLI/TUI-Kontext, MCP-Kontext,
+// 'kanban sync', 'kanban export'), prueft hier die Version und verweigert den
+// Start bei Abweichung — wie genau ("Exit 1" vs. "stderr + Exit 0" bei
+// 'kanban sync' vs. 'isError: true' im MCP) entscheidet der jeweilige
+// Aufrufer, nicht diese Funktion.
+//
+// Eine neue, noch leere DB (keine schema_version-Tabelle) ist kein Fehlerfall
+// — createSchema() legt sie gleich an. Deshalb rufen 'kanban migrate'
+// (migrate-v3.ts oeffnet die DB roh, nicht ueber openDb), initBoard() und
+// importBoard() (legen die DB immer frisch als v3 an) diese Pruefung nie mit
+// einer bestehenden alten Version auf — der fruehe Return unten deckt sie ab.
+//
+// Exportiert, damit Aufrufer (z.B. Tests) die Pruefung auch direkt ohne
+// openDb() ausloesen koennen.
+export function assertSchemaCurrent(db: Database, dbPath: string): void {
   const tableExists = db.query(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
   ).get();
@@ -50,11 +60,25 @@ function assertSchemaNotStale(db: Database, dbPath: string): void {
 
   const row = db.query("SELECT version FROM schema_version").get() as { version: number } | null;
   const currentVersion = row?.version ?? 0;
+
   if (currentVersion < SCHEMA_VERSION) {
+    // dbPath ist immer '<projectDir>/.kanban/board.db' (siehe getBoardPaths) —
+    // zwei Ebenen hoch ist der Ordner, in dem 'kanban migrate' laufen muss.
+    const projectDir = dirname(dirname(dbPath));
     throw new Error(
       `Board-Schema ist Version ${currentVersion}, benoetigt wird ${SCHEMA_VERSION}.\n` +
       `Datei: ${dbPath}\n` +
-      `Fuehre 'kanban migrate' aus. Ein Backup wird dabei automatisch angelegt.`
+      `Fuehre 'kanban migrate' in ${projectDir} aus. Ein Backup wird dabei automatisch angelegt.`
+    );
+  }
+
+  if (currentVersion > SCHEMA_VERSION) {
+    // Umgekehrter Fall: aelterer Client an einem neueren Board. 'kanban
+    // migrate' waere hier der falsche Rat — es gibt nichts zu migrieren,
+    // dieser Client selbst ist veraltet.
+    throw new Error(
+      `Board-Schema ist Version ${currentVersion}, dieser Client kann hoechstens ${SCHEMA_VERSION}.\n` +
+      `Aktualisiere kanban-mcp.`
     );
   }
 }
