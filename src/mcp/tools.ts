@@ -49,13 +49,19 @@ export function registerTools(server: McpServer, workingDir: string): void {
         dependsOn: z.array(z.string()).optional().describe("Abhaengigkeiten (Task-IDs)"),
         notes: z.string().optional().describe("Markdown-Notizen zum Task"),
         reportedBy: reportedBySchema,
+        // P2-2: bewusst z.string() statt z.enum() -- eine ungueltige Eingabe
+        // soll TaskService's Fehlermeldung durchreichen (zaehlt die drei
+        // gueltigen Werte auf), nicht Zods generische Enum-Meldung. Validierung
+        // gehoert in den Service, nicht ins Schema (siehe assertValidTaskPriority).
+        priority: z.string().optional().describe("Prioritaet: high, medium oder low"),
+        dueDate: z.string().optional().describe("Faelligkeit als YYYY-MM-DD"),
       }),
     },
-    async ({ title, description, columnId, createdBy, assignedTo, labels, dependsOn, notes, reportedBy }) => {
+    async ({ title, description, columnId, createdBy, assignedTo, labels, dependsOn, notes, reportedBy, priority, dueDate }) => {
       try {
         return withContext(workingDir, ({ taskService }) => {
           const task = taskService.addTask({
-            title, description, columnId, createdBy, assignedTo, labels, dependsOn, notes, reportedBy,
+            title, description, columnId, createdBy, assignedTo, labels, dependsOn, notes, reportedBy, priority, dueDate,
           });
           return { content: [{ type: "text", text: `Task erstellt: "${task.title}" (ID: ${task.id}) → ${task.columnId}` }] };
         });
@@ -107,12 +113,14 @@ export function registerTools(server: McpServer, workingDir: string): void {
         columnId: z.string().optional().describe("Nach Spalte filtern"),
         createdBy: z.string().optional().describe("Nach Ersteller filtern"),
         assignedTo: z.string().optional().describe("Nach Assignee filtern"),
+        priority: z.string().optional().describe("Nach Prioritaet filtern: high, medium oder low"),
+        overdue: z.boolean().optional().describe("Nur ueberfaellige Tasks anzeigen"),
       }),
     },
-    async ({ columnId, createdBy, assignedTo }) => {
+    async ({ columnId, createdBy, assignedTo, priority, overdue }) => {
       try {
         return withContext(workingDir, ({ taskService }) => {
-          const tasks = taskService.listTasks({ columnId, createdBy, assignedTo });
+          const tasks = taskService.listTasks({ columnId, createdBy, assignedTo, priority, overdue });
           return { content: [{ type: "text", text: JSON.stringify(tasks, null, 2) }] };
         });
       } catch (err) {
@@ -158,12 +166,14 @@ export function registerTools(server: McpServer, workingDir: string): void {
         assignedTo: z.string().nullable().optional().describe("Neuer Assignee"),
         labels: z.array(z.string()).optional().describe("Neue Labels"),
         notes: z.string().nullable().optional().describe("Neue Markdown-Notizen (null zum Loeschen)"),
+        priority: z.string().nullable().optional().describe("Neue Prioritaet: high, medium oder low (null zum Zuruecksetzen)"),
+        dueDate: z.string().nullable().optional().describe("Neue Faelligkeit als YYYY-MM-DD (null zum Zuruecksetzen)"),
       }),
     },
-    async ({ id, title, description, assignedTo, labels, notes }) => {
+    async ({ id, title, description, assignedTo, labels, notes, priority, dueDate }) => {
       try {
         return withContext(workingDir, ({ taskService }) => {
-          const task = taskService.updateTask(id, { title, description, assignedTo, labels, notes });
+          const task = taskService.updateTask(id, { title, description, assignedTo, labels, notes, priority, dueDate });
           return { content: [{ type: "text", text: `Task aktualisiert: "${task.title}" (ID: ${task.id})` }] };
         });
       } catch (err) {

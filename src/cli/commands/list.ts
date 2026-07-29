@@ -8,6 +8,9 @@ export const listCommand = new Command("list")
   .description("Tasks auflisten")
   .option("-c, --column <column>", "Nach Spalte filtern")
   .option("-a, --assignee <name>", "Nach Assignee filtern")
+  .option("--priority <high|medium|low>", "Nach Prioritaet filtern")
+  .option("--overdue", "Nur ueberfaellige Tasks anzeigen")
+  .option("--sort <priority|due|position>", "Sortierung (default: position)")
   .option("--json", "Ausgabe als JSON")
   .action((options) => {
     const { taskService, boardService } = getContext();
@@ -15,6 +18,9 @@ export const listCommand = new Command("list")
     const tasks = taskService.listTasks({
       columnId: options.column,
       assignedTo: options.assignee,
+      priority: options.priority,
+      overdue: options.overdue,
+      sort: options.sort,
     });
 
     // JSON-Ausgabe: Array direkt ausgeben

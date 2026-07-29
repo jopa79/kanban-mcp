@@ -1,5 +1,5 @@
 // Terminal-Ausgabe Formatierung mit Farben
-import type { Column, Task } from "../core/types.ts";
+import type { Task, TaskPriority } from "../core/types.ts";
 
 // ANSI Farb-Codes
 const COLORS = {
@@ -28,6 +28,32 @@ function colorForColumn(columnId: string): string {
   return COLUMN_COLORS[columnId] ?? COLORS.cyan;
 }
 
+// Farbe pro Prioritaet -- high am auffaelligsten, low am unauffaelligsten,
+// damit die Farbe selbst schon die Dringlichkeit spiegelt.
+function colorForPriority(priority: TaskPriority): string {
+  if (priority === "high") return COLORS.red;
+  if (priority === "medium") return COLORS.yellow;
+  return COLORS.gray;
+}
+
+// Prioritaets-Marker fuer formatTask/formatTaskDetail (P2-2) -- "!high" statt
+// nur "high", damit er sich im Fliesstext von Labels/Spaltennamen abhebt.
+function formatPriorityMarker(priority: Task["priority"]): string {
+  if (!priority) return "";
+  return ` ${colorForPriority(priority)}!${priority}${COLORS.reset}`;
+}
+
+// Faelligkeits-Marker (P2-2): "⚠" nur wenn ueberfaellig -- derselbe Marker,
+// den kanban status schon fuer Waisen nutzt (Aufmerksamkeit noetig), in Rot;
+// eine kuenftige Faelligkeit bleibt unauffaellig gedimmt.
+function formatDueDateMarker(task: Task): string {
+  if (!task.dueDate) return "";
+  if (task.isOverdue) {
+    return ` ${COLORS.red}⚠ faellig ${task.dueDate}${COLORS.reset}`;
+  }
+  return ` ${COLORS.dim}faellig ${task.dueDate}${COLORS.reset}`;
+}
+
 // Task als Zeile formatieren
 export function formatTask(task: Task): string {
   const color = colorForColumn(task.columnId);
@@ -40,8 +66,10 @@ export function formatTask(task: Task): string {
   const labels = task.labels.length > 0
     ? ` ${COLORS.cyan}[${task.labels.join(", ")}]${COLORS.reset}`
     : "";
+  const priority = formatPriorityMarker(task.priority);
+  const due = formatDueDateMarker(task);
 
-  return `${id} ${title} ${COLORS.dim}|${COLORS.reset} ${col}${assignee}${labels}`;
+  return `${id} ${title} ${COLORS.dim}|${COLORS.reset} ${col}${assignee}${labels}${priority}${due}`;
 }
 
 // Task-Details formatieren
@@ -55,6 +83,13 @@ export function formatTaskDetail(task: Task): string {
 
   if (task.assignedTo) {
     lines.push(`${COLORS.dim}Zugewiesen:${COLORS.reset} ${task.assignedTo}`);
+  }
+  if (task.priority) {
+    lines.push(`${COLORS.dim}Prioritaet:${COLORS.reset}  ${colorForPriority(task.priority)}${task.priority}${COLORS.reset}`);
+  }
+  if (task.dueDate) {
+    const overdueNote = task.isOverdue ? ` ${COLORS.red}⚠ ueberfaellig${COLORS.reset}` : "";
+    lines.push(`${COLORS.dim}Faellig:${COLORS.reset}     ${task.dueDate}${overdueNote}`);
   }
   if (task.description) {
     lines.push(`${COLORS.dim}Beschreibung:${COLORS.reset}`);

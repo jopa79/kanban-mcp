@@ -293,3 +293,110 @@ describe("MCP-Tools — kanban_add_task_checked entschaerft (P1-4)", () => {
     expect(forceProp?.description ?? "").toBe("");
   });
 });
+
+describe("MCP-Tools — priority/dueDate (P2-1/P2-2)", () => {
+  let ctx: McpTestContext;
+  afterEach(async () => ctx?.cleanup());
+
+  test("kanban_add_task mit priority/dueDate -> kanban_get_task zeigt beides plus isOverdue", async () => {
+    ctx = await createMcpTestClient();
+    const created = await ctx.client.callTool({
+      name: "kanban_add_task",
+      arguments: { title: "X", reportedBy: "backend", priority: "high", dueDate: "2000-01-01" },
+    });
+    const taskId = extractTaskId(textOf(created));
+
+    const result = await ctx.client.callTool({ name: "kanban_get_task", arguments: { id: taskId } });
+    const enriched = JSON.parse(textOf(result));
+    expect(enriched.priority).toBe("high");
+    expect(enriched.dueDate).toBe("2000-01-01");
+    // Faellig im Jahr 2000 -- unabhaengig vom aktuellen Datum sicher ueberfaellig.
+    expect(enriched.isOverdue).toBe(true);
+  });
+
+  test("kanban_add_task mit ungueltiger priority -> isError: true, nennt die drei gueltigen Werte", async () => {
+    ctx = await createMcpTestClient();
+    const result = await ctx.client.callTool({
+      name: "kanban_add_task",
+      arguments: { title: "X", reportedBy: "backend", priority: "urgent" },
+    });
+    expect(result.isError).toBe(true);
+    const text = textOf(result);
+    expect(text).toContain("high");
+    expect(text).toContain("medium");
+    expect(text).toContain("low");
+  });
+
+  test("kanban_add_task mit ungueltigem dueDate (Kalendertag existiert nicht) -> isError: true", async () => {
+    ctx = await createMcpTestClient();
+    const result = await ctx.client.callTool({
+      name: "kanban_add_task",
+      arguments: { title: "X", reportedBy: "backend", dueDate: "2026-02-31" },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("existiert im Kalender nicht");
+  });
+
+  test("kanban_add_task mit falschem Datumsformat -> isError: true, nennt das erwartete Format", async () => {
+    ctx = await createMcpTestClient();
+    const result = await ctx.client.callTool({
+      name: "kanban_add_task",
+      arguments: { title: "X", reportedBy: "backend", dueDate: "01.03.2026" },
+    });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("YYYY-MM-DD");
+  });
+
+  test("kanban_update_task mit priority: null setzt die Prioritaet zurueck", async () => {
+    ctx = await createMcpTestClient();
+    const created = await ctx.client.callTool({
+      name: "kanban_add_task",
+      arguments: { title: "X", reportedBy: "backend", priority: "low" },
+    });
+    const taskId = extractTaskId(textOf(created));
+
+    await ctx.client.callTool({
+      name: "kanban_update_task",
+      arguments: { id: taskId, priority: null },
+    });
+
+    const result = await ctx.client.callTool({ name: "kanban_get_task", arguments: { id: taskId } });
+    expect(JSON.parse(textOf(result)).priority).toBeNull();
+  });
+
+  test("kanban_list_tasks mit priority-Filter", async () => {
+    ctx = await createMcpTestClient();
+    await ctx.client.callTool({ name: "kanban_add_task", arguments: { title: "A", reportedBy: "x", priority: "high" } });
+    await ctx.client.callTool({ name: "kanban_add_task", arguments: { title: "B", reportedBy: "x", priority: "low" } });
+
+    const result = await ctx.client.callTool({ name: "kanban_list_tasks", arguments: { priority: "high" } });
+    const tasks = JSON.parse(textOf(result));
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].title).toBe("A");
+  });
+
+  test("kanban_list_tasks mit overdue: true liefert nur ueberfaellige Tasks", async () => {
+    ctx = await createMcpTestClient();
+    await ctx.client.callTool({ name: "kanban_add_task", arguments: { title: "Ueberfaellig", reportedBy: "x", dueDate: "2000-01-01" } });
+    await ctx.client.callTool({ name: "kanban_add_task", arguments: { title: "Zukunft", reportedBy: "x", dueDate: "2999-01-01" } });
+
+    const result = await ctx.client.callTool({ name: "kanban_list_tasks", arguments: { overdue: true } });
+    const tasks = JSON.parse(textOf(result));
+    expect(tasks.map((t: { title: string }) => t.title)).toEqual(["Ueberfaellig"]);
+  });
+
+  test("kanban_add_task_checked akzeptiert priority/dueDate ebenfalls", async () => {
+    ctx = await createMcpTestClient();
+    const result = await ctx.client.callTool({
+      name: "kanban_add_task_checked",
+      arguments: { title: "X", reportedBy: "backend", priority: "medium", dueDate: "2026-08-01" },
+    });
+    expect(result.isError).toBeUndefined();
+    const taskId = extractTaskId(textOf(result));
+
+    const getResult = await ctx.client.callTool({ name: "kanban_get_task", arguments: { id: taskId } });
+    const enriched = JSON.parse(textOf(getResult));
+    expect(enriched.priority).toBe("medium");
+    expect(enriched.dueDate).toBe("2026-08-01");
+  });
+});

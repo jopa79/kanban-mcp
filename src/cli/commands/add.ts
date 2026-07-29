@@ -12,6 +12,8 @@ export const addCommand = new Command("add")
   .option("-l, --labels <labels>", "Labels (kommagetrennt)")
   .option("-n, --notes <text>", "Markdown-Notizen")
   .option("--by <name>", "Wer meldet diese Aenderung (default: user)")
+  .option("-p, --priority <high|medium|low>", "Prioritaet")
+  .option("--due <YYYY-MM-DD>", "Faelligkeit")
   .action((title: string, options) => {
     try {
       const { taskService } = getContext();
@@ -27,6 +29,8 @@ export const addCommand = new Command("add")
         labels,
         notes: options.notes,
         reportedBy: options.by,
+        priority: options.priority,
+        dueDate: options.due,
       });
 
       success("Task erstellt:");

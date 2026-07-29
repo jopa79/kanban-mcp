@@ -24,14 +24,16 @@ export function registerExtraTools(server: McpServer, workingDir: string): void 
         labels: z.array(z.string()).optional().describe("Labels"),
         notes: z.string().optional().describe("Markdown-Notizen zum Task"),
         reportedBy: reportedBySchema,
+        priority: z.string().optional().describe("Prioritaet: high, medium oder low"),
+        dueDate: z.string().optional().describe("Faelligkeit als YYYY-MM-DD"),
         force: z.boolean().optional(),
       }),
     },
-    async ({ title, description, columnId, createdBy, assignedTo, labels, notes, reportedBy, force }) => {
+    async ({ title, description, columnId, createdBy, assignedTo, labels, notes, reportedBy, priority, dueDate, force }) => {
       try {
         return withContext(workingDir, ({ taskService }) => {
           const result = taskService.addTaskChecked(
-            { title, description, columnId, createdBy, assignedTo, labels, notes, reportedBy },
+            { title, description, columnId, createdBy, assignedTo, labels, notes, reportedBy, priority, dueDate },
             { force },
           );
           if (result.rejected || !result.task) {

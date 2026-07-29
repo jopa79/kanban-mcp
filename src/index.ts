@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { initCommand } from "./cli/commands/init.ts";
 import { addCommand } from "./cli/commands/add.ts";
 import { listCommand } from "./cli/commands/list.ts";
+import { updateCommand } from "./cli/commands/update.ts";
 import { moveCommand } from "./cli/commands/move.ts";
 import { doneCommand } from "./cli/commands/done.ts";
 import { statusCommand } from "./cli/commands/status.ts";
@@ -29,6 +30,7 @@ program
 program.addCommand(initCommand);
 program.addCommand(addCommand);
 program.addCommand(listCommand);
+program.addCommand(updateCommand);
 program.addCommand(getCommand);
 program.addCommand(moveCommand);
 program.addCommand(doneCommand);

@@ -12,9 +12,71 @@ export interface Column {
   isTerminal: boolean;
 }
 
-// Prioritaet eines Tasks — echte, sortierbare Spalte seit Schema v3 (Paket 0).
-// Durchreichen ueber CLI/MCP/TUI kommt erst in Paket 2 (Metadaten).
+// Prioritaet eines Tasks — echte, sortierbare Spalte seit Schema v3 (Paket 0),
+// durchgereicht ueber CLI/MCP seit Paket 2 (P2-1/P2-2). Echte Spalte statt
+// Label, weil nur eine Spalte eine Ordnung hat: 'priority:high' als Label
+// waere filterbar gewesen, aber nicht sortierbar (siehe Plan Abschnitt 4.5 --
+// derselbe Grund gilt fuer dueDate).
 export type TaskPriority = "high" | "medium" | "low";
+
+// In Sortier-Reihenfolge (high zuerst) -- exportiert, damit CLI-Hilfetexte,
+// MCP-.describe()-Texte und die Validierung dieselbe Liste zeigen, statt drei
+// Kopien zu pflegen, die auseinanderlaufen koennen.
+export const TASK_PRIORITIES: readonly TaskPriority[] = ["high", "medium", "low"];
+
+// Prueft eine rohe Prioritaets-Eingabe aus CLI/MCP (immer nur 'string', nie
+// TaskPriority -- der Typchecker kann eine Laufzeit-Eingabe nicht einschraenken).
+// undefined ("nicht angegeben") und null ("explizit zuruecksetzen") sind immer
+// gueltig und werden durchgereicht; nur ein tatsaechlicher Wert wird gegen
+// TASK_PRIORITIES geprueft. Wirft mit einer Meldung, die die gueltigen Werte
+// aufzaehlt (Stil der Zustandsmaschine: sagen was gilt, nicht nur was falsch ist).
+export function assertValidTaskPriority(value: string | null | undefined): void {
+  if (value === undefined || value === null) return;
+  if (!TASK_PRIORITIES.includes(value as TaskPriority)) {
+    throw new Error(
+      `Ungueltige Prioritaet: '${value}'. Gueltige Werte: ${TASK_PRIORITIES.join(", ")}.`,
+    );
+  }
+}
+
+// Format fuer Faelligkeitsdaten: ISO-Datum ohne Uhrzeit, damit der reine
+// String sowohl sortierbar als auch mit einem "heute"-String vergleichbar ist
+// (siehe TaskService.isOverdue).
+const DUE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+// Prueft ein rohes Faelligkeitsdatum: Format UND Kalendergueltigkeit.
+// new Date("2026-02-31") wirft NICHT, sondern rollt still auf den 3. Maerz um
+// -- ein reiner Parse-Versuch waere also keine verlaessliche Pruefung.
+// Stattdessen: Jahr/Monat/Tag einzeln herausgezogen, ein Date daraus gebaut
+// und die drei Komponenten zurueckverglichen -- rollt JS um, weichen sie ab.
+// Vergangene Daten sind gueltig (man traegt auch Ueberfaelliges nach), nur
+// die kalendarische EXISTENZ des Datums wird geprueft, nicht seine Lage in
+// der Zeit.
+export function assertValidDueDate(value: string | null | undefined): void {
+  if (value === undefined || value === null) return;
+
+  if (!DUE_DATE_PATTERN.test(value)) {
+    throw new Error(
+      `Ungueltiges Faelligkeitsdatum: '${value}'. Erwartet wird das Format YYYY-MM-DD (z.B. 2026-08-01).`,
+    );
+  }
+
+  const [yearStr, monthStr, dayStr] = value.split("-") as [string, string, string];
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  const roundTrip = new Date(year, month - 1, day);
+  const isRealCalendarDate =
+    roundTrip.getFullYear() === year &&
+    roundTrip.getMonth() === month - 1 &&
+    roundTrip.getDate() === day;
+
+  if (!isRealCalendarDate) {
+    throw new Error(
+      `Ungueltiges Faelligkeitsdatum: '${value}' existiert im Kalender nicht.`,
+    );
+  }
+}
 
 export interface Task {
   id: string;
@@ -34,6 +96,10 @@ export interface Task {
   notes?: string | null;
   hasNotes?: boolean;
   isBlocked?: boolean;
+  // P2-1: abgeleitet (dueDate < heute && !archived && Spalte nicht terminal),
+  // nicht gespeichert -- analog zu isBlocked nicht in rowToTask, sondern in
+  // TaskService.getTask()/listTasks() gesetzt (siehe TaskService.isOverdue).
+  isOverdue?: boolean;
 }
 
 // Spalten-Definition wie sie in config.json steht — bewusst OHNE 'position'.
@@ -69,6 +135,12 @@ export interface AddTaskInput {
   // (CLI/TUI/Skripte duerfen es weglassen, Default "user"); an der
   // MCP-Werkzeugoberflaeche wird es zum Pflichtfeld (siehe tools.ts).
   reportedBy?: string;
+  // P2-1: bewusst 'string', nicht 'TaskPriority' -- CLI/MCP liefern rohe,
+  // ungeprueften Text. TaskService validiert (assertValidTaskPriority) und
+  // wirft mit einer Meldung, die die gueltigen Werte aufzaehlt, statt sich
+  // auf den Typchecker zu verlassen, der zur Laufzeit ohnehin nicht greift.
+  priority?: string | null;
+  dueDate?: string | null;
 }
 
 export interface UpdateTaskInput {
@@ -77,6 +149,8 @@ export interface UpdateTaskInput {
   assignedTo?: string | null;
   labels?: string[];
   notes?: string | null;
+  priority?: string | null;
+  dueDate?: string | null;
 }
 
 // Optionen fuer TaskService.moveTask (P1-2).
@@ -98,6 +172,19 @@ export interface ListTasksFilter {
   createdBy?: string;
   assignedTo?: string;
   includeArchived?: boolean;
+  // P2-1: lose typisiert (nicht TaskPriority) -- ein unbekannter Filterwert
+  // ist kein Fehler, er liefert schlicht keine Treffer. Anders als beim
+  // SETZEN einer Prioritaet gibt es beim FILTERN nichts zu validieren.
+  priority?: string;
+  // Nur Tasks mit TaskService.isOverdue() === true.
+  overdue?: boolean;
+  // Sortierung ist optional, Default bleibt position/created_at (siehe
+  // TaskService.buildOrderBy) -- sonst zerreisst es die manuelle Reihenfolge,
+  // die z.B. die TUI ueber reorderTask() pflegt. Lose typisiert (nicht als
+  // Union): CLI-Optionen kommen als roher String an, ein unbekannter Wert
+  // faellt auf die Default-Sortierung zurueck statt zu werfen -- Sortierung
+  // ist eine Praesentationsfrage, keine Regel, die eine Ablehnung verdient.
+  sort?: string;
 }
 
 export interface AddTaskCheckedResult {

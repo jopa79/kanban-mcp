@@ -36,6 +36,9 @@ kanban add "Task Titel" -d "Beschreibung" -c backlog
 # Tasks auflisten
 kanban list                  # Alle Tasks
 kanban list -c todo          # Nur aus Todo-Spalte
+kanban list --priority high  # Nach Prioritaet filtern
+kanban list --overdue        # Nur ueberfaellige Tasks
+kanban list --sort priority  # high vor medium vor low vor ohne Prioritaet
 
 # Task verschieben / abschliessen -- die Spaltenkette ist vorwaerts strikt
 # (max. ein Schritt), rueckwaerts frei; done braucht Review davor
@@ -46,7 +49,14 @@ kanban done <id>
 # Wird in transitions.reported_by protokolliert, nicht auf dem Task selbst.
 kanban move <id> in-progress --by backend
 
+# Prioritaet und Faelligkeit -- echte, sortierbare Spalten (kein Label: nur
+# eine Spalte hat eine Ordnung). Werden nie automatisch gesetzt (auch nicht
+# vom Sync), nur von Hand ueber CLI/MCP/TUI
+kanban add "Task Titel" -p high --due 2026-08-01
+kanban update <id> -p low --due 2026-12-25
+
 # Task aendern / loeschen
+kanban update <id> -t "Neuer Titel"
 kanban delete <id>
 
 # Board-Status
@@ -157,9 +167,9 @@ Als Claude Code MCP Server registrieren (`~/.claude/settings.json`):
 | `kanban_add_task` | Task erstellen (Pflichtfeld `reportedBy`, nur Backlog/Todo) |
 | `kanban_add_task_checked` | Task mit Duplikat-Pruefung erstellen (Pflichtfeld `reportedBy`) |
 | `kanban_get_task` | Task per ID abrufen |
-| `kanban_list_tasks` | Tasks auflisten (mit Filtern) |
+| `kanban_list_tasks` | Tasks auflisten (Filter, u.a. `priority`, `overdue`) |
 | `kanban_move_task` | Task verschieben (Pflichtfeld `reportedBy`) |
-| `kanban_update_task` | Task-Eigenschaften aendern |
+| `kanban_update_task` | Task-Eigenschaften aendern (inkl. `priority`, `dueDate`) |
 | `kanban_delete_task` | Task loeschen |
 | `kanban_complete_task` | Task abschliessen (Pflichtfeld `reportedBy`, nur aus Review) |
 | `kanban_status` | Board-Uebersicht |
@@ -186,6 +196,22 @@ rueckwaerts beliebig frei, und `kanban_complete_task` verlangt, dass der Task
 in der Spalte direkt vor der Terminal-Spalte steht (Default: Review). Jede
 Ablehnung kommt mit `isError: true` und nennt den naechsten gueltigen
 Schritt.
+
+**`priority` und `dueDate`** (seit 0.2.0): echte, sortierbare Spalten statt
+Labels — nur eine Spalte hat eine Ordnung, ein Label waere filterbar, aber
+nicht sortierbar gewesen. `priority` ist `high`, `medium` oder `low`;
+`dueDate` ein Kalenderdatum als `YYYY-MM-DD`. Beide werden **ausschliesslich
+von Hand** gesetzt (CLI, MCP oder TUI) — auch der TodoWrite-Sync fasst sie
+nie an, weil TodoWrite selbst kein Prioritaets-Feld liefert. Ungueltige Werte
+werden mit einer Fehlermeldung abgelehnt, die die gueltigen Werte nennt (z.B.
+`Ungueltige Prioritaet: 'urgent'. Gueltige Werte: high, medium, low.`); ein
+Kalenderdatum wird auch auf tatsaechliche Existenz geprueft (`2026-02-31`
+scheitert, obwohl das Format stimmt). Vergangene Faelligkeiten sind erlaubt.
+`isOverdue` wird abgeleitet (`dueDate < heute && !archived && Spalte nicht
+terminal`), nicht gespeichert, und erscheint automatisch bei `kanban_get_task`
+und `kanban_list_tasks`. `kanban_list_tasks` filtert zusaetzlich nach
+`priority` und `overdue`; `kanban list` (CLI) kann zusaetzlich sortieren
+(`--sort priority|due|position`).
 
 ## Skills
 

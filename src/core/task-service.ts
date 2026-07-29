@@ -13,9 +13,20 @@ import type {
   TaskRow,
   UpdateTaskInput,
 } from "./types.ts";
-import { rowToTask } from "./types.ts";
+import { assertValidDueDate, assertValidTaskPriority, rowToTask } from "./types.ts";
 import { similarity, SIMILARITY_THRESHOLD } from "./similarity.ts";
 import type { TransitionCheck } from "./transition-service.ts";
+
+// Heutiges Datum als YYYY-MM-DD in LOKALER Zeit (nicht UTC via toISOString()
+// -- das wuerde einen Task kurz nach Mitternacht UTC faelschlich schon fuer
+// "morgen" faellig halten). Fuer TaskService.isOverdue().
+function todayLocalIso(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 // TaskService erbt Archiv-Funktionen von ArchiveService
 export class TaskService extends ArchiveService {
@@ -34,6 +45,11 @@ export class TaskService extends ArchiveService {
       throw new Error(entryCheck.reason);
     }
 
+    // P2-1: Validierung lebt im Service, nicht in CLI/MCP -- eine Eingabe
+    // kommt von dort immer als roher String, nie typgeprueft.
+    assertValidTaskPriority(input.priority);
+    assertValidDueDate(input.dueDate);
+
     // Position: ans Ende der Zielspalte
     const maxPos = this.db
       .query("SELECT COALESCE(MAX(position), -1) as max_pos FROM tasks WHERE column_id = ? AND archived = 0")
@@ -41,8 +57,8 @@ export class TaskService extends ArchiveService {
     const position = maxPos.max_pos + 1;
 
     this.db.run(
-      `INSERT INTO tasks (id, title, description, column_id, created_by, assigned_to, labels, position, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (id, title, description, column_id, created_by, assigned_to, labels, position, created_at, updated_at, priority, due_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.title,
@@ -54,6 +70,8 @@ export class TaskService extends ArchiveService {
         position,
         now,
         now,
+        input.priority ?? null,
+        input.dueDate ?? null,
       ],
     );
 
@@ -134,6 +152,7 @@ export class TaskService extends ArchiveService {
     task.notes = this.notesService.load(task.id);
     task.hasNotes = task.notes !== null;
     task.isBlocked = this.isBlocked(task.id);
+    task.isOverdue = this.isOverdue(task);
     return task;
   }
 
@@ -157,21 +176,46 @@ export class TaskService extends ArchiveService {
       conditions.push("assigned_to = ?");
       params.push(filter.assignedTo);
     }
+    if (filter?.priority) {
+      conditions.push("priority = ?");
+      params.push(filter.priority);
+    }
 
     const where = conditions.length > 0
       ? `WHERE ${conditions.join(" AND ")}`
       : "";
 
     const rows = this.db
-      .query(`SELECT * FROM tasks ${where} ORDER BY position ASC, created_at ASC`)
+      .query(`SELECT * FROM tasks ${where} ${this.buildOrderBy(filter?.sort)}`)
       .all(...params) as TaskRow[];
 
-    return rows.map((row) => {
+    const tasks = rows.map((row) => {
       const task = rowToTask(row);
       task.hasNotes = this.notesService.exists(task.id);
       task.isBlocked = this.isBlocked(task.id);
+      task.isOverdue = this.isOverdue(task);
       return task;
     });
+
+    // 'overdue' kann nicht rein in SQL ausgedrueckt werden -- ob eine Spalte
+    // terminal ist, steht in config.json, nicht in der DB. Deshalb Filterung
+    // in JS, nachdem isOverdue je Task schon berechnet ist (s.o.).
+    return filter?.overdue ? tasks.filter((t) => t.isOverdue) : tasks;
+  }
+
+  // Sortier-Klausel fuer listTasks(). Default bleibt position/created_at --
+  // die manuelle Reihenfolge (reorderTask, TUI) darf ohne explizites
+  // sort-Flag nicht zerrissen werden. Tasks ohne Prioritaet bzw. ohne
+  // Faelligkeit sortieren ans ENDE (CASE-Praefix 3 bzw. 1), nicht als
+  // "medium"/"heute faellig" -- null heisst "nicht gesetzt".
+  private buildOrderBy(sort: ListTasksFilter["sort"]): string {
+    if (sort === "priority") {
+      return "ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END, position ASC, created_at ASC";
+    }
+    if (sort === "due") {
+      return "ORDER BY CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC, position ASC, created_at ASC";
+    }
+    return "ORDER BY position ASC, created_at ASC";
   }
 
   // Task in andere Spalte verschieben (P1-2). opts.override umgeht Kettenregel
@@ -318,6 +362,12 @@ export class TaskService extends ArchiveService {
     const task = this.getTask(id);
     if (!task) throw new Error(`Task '${id}' nicht gefunden`);
 
+    // P2-1: Validierung lebt im Service (siehe addTask). undefined = Feld
+    // unberuehrt lassen, null = explizit zuruecksetzen -- beides ueberspringt
+    // die Pruefung, nur ein tatsaechlicher Wert wird geprueft.
+    assertValidTaskPriority(changes.priority);
+    assertValidDueDate(changes.dueDate);
+
     const updates: string[] = [];
     const params: SQLQueryBindings[] = [];
 
@@ -325,6 +375,8 @@ export class TaskService extends ArchiveService {
     if (changes.description !== undefined) { updates.push("description = ?"); params.push(changes.description); }
     if (changes.assignedTo !== undefined) { updates.push("assigned_to = ?"); params.push(changes.assignedTo); }
     if (changes.labels !== undefined) { updates.push("labels = ?"); params.push(JSON.stringify(changes.labels)); }
+    if (changes.priority !== undefined) { updates.push("priority = ?"); params.push(changes.priority); }
+    if (changes.dueDate !== undefined) { updates.push("due_date = ?"); params.push(changes.dueDate); }
 
     // Notes separat behandeln (Dateisystem, nicht DB)
     if (changes.notes !== undefined) {
@@ -428,6 +480,23 @@ export class TaskService extends ArchiveService {
     if (!terminal) return false;
     const deps = this.getDependencies(taskId);
     return deps.some(d => d.columnId !== terminal.id && !d.archived);
+  }
+
+  // Pruefen ob ein Task ueberfaellig ist: dueDate < heute && !archived &&
+  // Spalte ist nicht terminal (P2-1, Plan Abschnitt 4.4). Ein erledigter Task
+  // ist nicht ueberfaellig, auch wenn seine Faelligkeit in der Vergangenheit
+  // liegt. Vergleich auf DATUMS-, nicht Zeitstempelebene -- ein heute
+  // faelliger Task ist heute nicht ueberfaellig (dueDate < heute ist bei
+  // Gleichheit false). 'today' optional und ISO YYYY-MM-DD (Default: echtes
+  // heutiges Datum in LOKALER Zeit, nicht UTC -- sonst waere ein Task kurz
+  // nach Mitternacht UTC faelschlich schon "morgen" faellig) -- als Parameter
+  // ueberschreibbar fuer deterministische Tests, die nicht an Mitternacht
+  // flackern duerfen.
+  isOverdue(task: Task, today: string = todayLocalIso()): boolean {
+    if (!task.dueDate || task.archived) return false;
+    const column = this.boardService.getColumn(task.columnId);
+    if (column?.isTerminal) return false;
+    return task.dueDate < today;
   }
 
   // Board-Status.

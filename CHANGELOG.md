@@ -299,6 +299,58 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
     keine Identitaet ueber Aufrufe hinweg. Wird ein aus einem Todo
     entstandener Task umbenannt, erzeugt der naechste Sync einen zweiten Task
   - 17 neue Tests (`tests/sync-service.test.ts`)
+- `priority` und `dueDate` durchgereicht (P2-1/P2-2). Die Spalten existieren
+  seit Schema v3 (Paket 0) in der DB, wurden aber bisher nirgends gesetzt
+  oder gelesen — `rowToTask` fuellte sie, danach verschwanden sie. Echte
+  Spalten statt Labels, weil nur eine Spalte eine Ordnung hat: `priority:high`
+  als Label waere filterbar, aber nicht sortierbar gewesen
+  - `TaskService.addTask`/`updateTask` validieren `priority` (nur `high`,
+    `medium`, `low`) und `dueDate` (`YYYY-MM-DD`, **inklusive
+    Kalendergueltigkeit** — `2026-02-31` ist syntaktisch korrekt und trotzdem
+    ungueltig; `new Date()` allein rollt sowas still auf einen anderen Tag um
+    und wirft nicht, deshalb ein Rueckvergleich von Jahr/Monat/Tag statt eines
+    reinen Parse-Versuchs). Vergangene Faelligkeiten bleiben erlaubt — man
+    traegt auch Ueberfaelliges nach. Validierung lebt in `types.ts`
+    (`assertValidTaskPriority`, `assertValidDueDate`), aufgerufen aus dem
+    Service, nicht aus CLI oder MCP-Schema — damit eine ungueltige Eingabe
+    immer dieselbe, die gueltigen Werte aufzaehlende Fehlermeldung bekommt
+  - `Task.isOverdue` (abgeleitet, nicht gespeichert):
+    `dueDate < heute && !archived && Spalte nicht terminal`. Vergleich auf
+    Datums-, nicht Zeitstempelebene — heute faellig ist nicht ueberfaellig.
+    "Heute" in lokaler Zeit, nicht UTC (`TaskService.isOverdue`, optionaler
+    `today`-Parameter fuer deterministische Tests). Gesetzt in `getTask()`
+    und `listTasks()`, analog zu `isBlocked` nicht in `rowToTask`
+  - `TaskService.listTasks`: Filter `priority` und `overdue`, sowie
+    `sort: "priority" | "due" | "position"` (lose typisiert, ein unbekannter
+    Wert faellt auf die Default-Sortierung zurueck statt zu werfen —
+    Sortierung ist eine Praesentationsfrage, keine Regel). Tasks ohne
+    Prioritaet bzw. ohne Faelligkeit sortieren ans Ende, nicht als
+    "medium"/"heute faellig". Ohne `sort`-Angabe bleibt es bei
+    `position ASC, created_at ASC`, sonst zerreisst es die manuelle
+    Reihenfolge aus `reorderTask`/TUI
+  - CLI: `-p, --priority` und `--due` an `add`; `--priority`, `--overdue`,
+    `--sort` an `list`
+  - **Neu: `kanban update <id>`** (`src/cli/commands/update.ts`) — es gab
+    bisher **kein** CLI-Kommando zum Aendern eines bestehenden Tasks (nur
+    `note` fuer Notizen); ohne das liesse sich eine Prioritaet nachtraeglich
+    nur ueber MCP oder TUI setzen
+  - `formatTask`/`formatTaskDetail`: Prioritaets- und Faelligkeitsmarker,
+    ueberfaellig in Rot mit `⚠` (derselbe Marker wie bei Waisen-Tasks)
+  - MCP: `priority`/`dueDate` optional bei `kanban_add_task`,
+    `kanban_add_task_checked`, `nullable` zum Zuruecksetzen bei
+    `kanban_update_task`; `priority`-Filter und `overdue`-Flag bei
+    `kanban_list_tasks`. Bewusst `z.string()` statt `z.enum()` im
+    Zod-Schema — eine ungueltige Eingabe soll `TaskService`s Fehlermeldung
+    durchreichen, nicht Zods generische Enum-Meldung. `kanban_get_task`
+    liefert `priority`/`dueDate`/`isOverdue` automatisch mit (ueber
+    `rowToTask` bzw. die neue `isOverdue`-Zuweisung), keine Aenderung an
+    dem Tool selbst noetig
+  - Sync fasst `priority`/`dueDate` nicht an (eigens getestet) — das Feld
+    wird ausschliesslich von Hand gepflegt, TodoWrite liefert es nicht
+    (Plan Abschnitt 0.1/4.5; P2-4 "Priority aus TodoWrite" ist ersatzlos
+    gestrichen)
+  - 26 neue Tests (`tests/task-metadata.test.ts`) + 8 neue MCP-Tests
+    (`tests/mcp-tools.test.ts`)
 
 ### Removed
 
