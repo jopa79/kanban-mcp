@@ -208,6 +208,37 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
     Server-Roundtrip ueber `InMemoryTransport` (kein Mock), damit die
     Tool-Antworten genauso getestet werden, wie ein Agent sie sieht
 
+- Override-Dialog in der TUI (P1-5, ADR 0002) — die einzige Stelle im Werkzeug,
+  an der eine Regel bewusst gebrochen werden darf. `moveTask`/`completeTask`
+  (`src/tui/use-board.ts`) werfen nicht mehr, sondern liefern
+  `{ ok, reason }`; bei Ablehnung zeigt `OverrideConfirm`
+  (`src/tui/status-bar.tsx`) den **vollen** Ablehnungstext aus
+  `TransitionService` — blockierende Tasks, Standzeiten, naechster gueltiger
+  Schritt — bevor `y` denselben Aufruf mit `{ override: true }` wiederholt
+  (bestehender Pfad aus P1-2, kein zweiter Umgehungsweg). Betrifft
+  Verschiebe-Modus (Pfeiltasten) und `d` (Done); `t` (Backlog→Todo) bleibt
+  ohne Dialog (strukturell immer legal), zeigt eine Ablehnung aber trotzdem
+  an, statt sie zu verschlucken
+  - Eintrittsregel beim Anlegen (`n`): steht der Cursor auf einer Spalte ohne
+    `allowEntry`, wird der Task still in Todo angelegt (Statuszeile: "Neue
+    Tasks nur in Backlog oder Todo — angelegt in Todo"), Cursor springt
+    dorthin, kein Override-Dialog — anlegen ist eine Fehlbedienung, keine
+    Ausnahme
+  - Tastatur-Kaskade nach `src/tui/use-input-modes.ts` ausgelagert: der
+    Override-Dialog haette `app.tsx` ueber die 420-Zeilen-Stoppgrenze aus den
+    Task-Notes getrieben (zwischenzeitlich 462 Zeilen); reine
+    Verhaltens-Verschiebung (kein State-Owner-Wechsel), wie in den Notes als
+    Kandidat benannt
+- Verwaiste Tasks sichtbar gemacht (P1-6, ADR 0001): virtuelle Sammelspalte
+  `⚠ Ohne Spalte` ganz rechts in der TUI (`src/tui/use-board.ts`:
+  `displayColumns`/`isOrphanTask`, `src/tui/board-view.tsx`), nur wenn
+  tatsaechlich Waisen existieren. Aus ihr heraus ist jeder Move erlaubt
+  (Transition mit `reason: "orphan-recovery"`). `kanban status` weist Waisen
+  jetzt separat aus (Text **und** `--json`) und rechnet sie in `total` ein
+  (`src/cli/formatters.ts`, `src/cli/commands/status.ts`) —
+  `TaskService.getStatus()` selbst bleibt unangetastet, die Korrektur passiert
+  in der CLI-Schicht (Core-Grenze dieses Tasks, siehe Bericht an team-lead)
+
 ### Removed
 
 - `plugins/ralph-tracker` — das Tracker-Plugin fuer [Ralph TUI](https://github.com/subsy/ralph-tui)
@@ -279,6 +310,15 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   Rest Null-Checks unter `noUncheckedIndexedAccess` sowie ein totes,
   in ink 6.8.0 nie gelesenes `fullScreen`-Feld in `kanban tui`) — reine
   Aufrufsyntax-/Typ-Fixes, keine Verhaltensaenderung
+- `src/tui/use-board.ts` las `config.json` zweimal pro `loadData()`-Aufruf
+  (einmal in `createServices()`, danach direkt nochmal in `loadData()` selbst)
+  — jeder Refresh in der TUI (nach jeder schreibenden Aktion, bei jedem
+  `fs.watch`-Ereignis) las, parste und validierte die Config doppelt, dazu ein
+  theoretisches Konsistenzfenster zwischen beiden Lesevorgaengen (GitHub #35).
+  `loadData()` nutzt jetzt nur noch die eine `BoardService`-Instanz aus
+  `createServices()`; ein Zaehler-Spy-Test (`tests/use-board.test.ts`, via
+  `mock.module`) haelt fest, dass `loadBoardConfig` pro Aufruf genau einmal
+  laeuft
 
 ## [0.1.0] - 2026-03-03
 

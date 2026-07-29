@@ -1,17 +1,5 @@
 // Zentrale Farbkonstanten fuer die Kanban TUI
 
-// Spaltenfarben — klar unterscheidbar im Terminal
-export const COLUMN_COLORS: Record<string, string> = {
-  backlog: "#e2e8f0",       // helles Weiss
-  todo: "#f59e0b",          // Amber/Orange
-  "in-progress": "#3b82f6", // kraeftiges Blau
-  review: "#a855f7",        // Lila
-  done: "#22c55e",          // Gruen
-};
-
-// Fallback wenn Spalten-ID unbekannt
-export const DEFAULT_COLUMN_COLOR = "#94a3b8";
-
 // Akzentfarben fuer Task-Elemente
 export const ACCENT = {
   notes: "#f59e0b",      // Amber — Notiz-Indikator
@@ -22,6 +10,25 @@ export const ACCENT = {
   muted: "#64748b",      // Gedaempft — IDs, Meta-Info
   selected: "#1e293b",   // Dunkler Hintergrund fuer Selektion
 };
+
+// Sentinel-ID der virtuellen Sammelspalte fuer Waisen-Tasks (P1-6, ADR 0001).
+// Kein Task hat diese column_id jemals real in der DB — sie taucht nur in der
+// aus 'columns' abgeleiteten Anzeige-Liste auf (siehe use-board.ts:
+// displayColumns/isOrphanTask, board-view.tsx).
+export const ORPHAN_COLUMN_ID = "__orphan__";
+
+// Spaltenfarben — klar unterscheidbar im Terminal
+export const COLUMN_COLORS: Record<string, string> = {
+  backlog: "#e2e8f0",       // helles Weiss
+  todo: "#f59e0b",          // Amber/Orange
+  "in-progress": "#3b82f6", // kraeftiges Blau
+  review: "#a855f7",        // Lila
+  done: "#22c55e",          // Gruen
+  [ORPHAN_COLUMN_ID]: ACCENT.wipWarn, // Warnfarbe — Waisen sind ein Hinweis, keine normale Spalte
+};
+
+// Fallback wenn Spalten-ID unbekannt
+export const DEFAULT_COLUMN_COLOR = "#94a3b8";
 
 // Vordefinierte Tags mit Farben (orientiert an GitHub Issue Labels)
 export interface TagDef {

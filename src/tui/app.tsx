@@ -1,21 +1,20 @@
 // Ink Root Component — Interaktive Kanban TUI
 import React, { useState, useEffect } from "react";
-import { Box, Text, useApp, useInput, useStdout } from "ink";
+import { Box, Text, useApp, useStdout } from "ink";
 import { boardExists } from "../core/db.ts";
 import { NotesService } from "../core/notes-service.ts";
-import { exportBoard, importBoard } from "../core/export-service.ts";
+import { exportBoard } from "../core/export-service.ts";
 import { BoardView } from "./board-view.tsx";
 import { DetailView } from "./detail-view.tsx";
 import { HelpView } from "./help-view.tsx";
-import { AddInput, FilterInput, TitleInput, DescInput, DeleteConfirm, ExportInput, ImportInput, ImportConfirm, StatusBar } from "./status-bar.tsx";
+import { AddInput, FilterInput, TitleInput, DescInput, DeleteConfirm, ExportInput, ImportInput, ImportConfirm, OverrideConfirm, StatusBar } from "./status-bar.tsx";
 import { TextArea } from "./text-area.tsx";
 import { TagPicker } from "./tag-picker.tsx";
 import { ArchiveView } from "./archive-view.tsx";
 import { DependencyView } from "./dependency-view.tsx";
-import { useBoard } from "./use-board.ts";
-import { getColumnColor, ACCENT } from "./theme.ts";
-
-type Mode = "board" | "detail" | "add" | "filter" | "confirm-delete" | "help" | "edit-notes" | "edit-tags" | "edit-title" | "edit-description" | "archive" | "edit-deps" | "export-path" | "import-path" | "import-confirm";
+import { useBoard, isOrphanTask } from "./use-board.ts";
+import { useInputModes, type Mode, type PendingOverride } from "./use-input-modes.ts";
+import { getColumnColor, ACCENT, ORPHAN_COLUMN_ID } from "./theme.ts";
 
 interface AppProps {
   workingDir: string;
@@ -34,6 +33,7 @@ export function App({ workingDir }: AppProps) {
   const [archivedTasks, setArchivedTasks] = useState<import("../core/types.ts").Task[]>([]);
   const [moving, setMoving] = useState(false);
   const [importPath, setImportPath] = useState("");
+  const [pendingOverride, setPendingOverride] = useState<PendingOverride | null>(null);
 
   // Terminal-Hoehe tracken fuer festes Layout
   const { stdout } = useStdout();
@@ -52,8 +52,14 @@ export function App({ workingDir }: AppProps) {
     ? board.tasks.filter(t => t.title.toLowerCase().includes(filterText.toLowerCase()))
     : board.tasks;
 
-  const currentColTasks = board.columns.length > 0
-    ? filteredTasks.filter(t => t.columnId === board.columns[selectedCol]?.id)
+  // Aktive Spalte kommt aus displayColumns (echte Spalten + ggf. virtuelle
+  // Sammelspalte, P1-6) -- fuer die Sammelspalte zaehlt "gehoert dazu" als
+  // "Spalte des Tasks ist eine Waise", nicht als ID-Gleichheit (die Sentinel-ID
+  // existiert real bei keinem Task).
+  const activeColumn = board.displayColumns[selectedCol];
+  const currentColTasks = activeColumn
+    ? filteredTasks.filter(t =>
+        activeColumn.id === ORPHAN_COLUMN_ID ? isOrphanTask(t, board.columns) : t.columnId === activeColumn.id)
     : [];
 
   const selectedTask = currentColTasks[selectedRow] ?? null;
@@ -65,114 +71,33 @@ export function App({ workingDir }: AppProps) {
     }
   }, [currentColTasks.length, selectedRow]);
 
-  useInput((input, key) => {
-    // Esc in Export/Import-Pfadeingabe: abbrechen
-    if (key.escape && (mode === "export-path" || mode === "import-path")) {
-      setMode("board"); setStatusMsg(""); return;
-    }
-
-    // Import-Bestaetigungsdialog
-    if (mode === "import-confirm") {
-      if (input === "y") {
-        setMode("board"); setStatusMsg("Importiere...");
-        importBoard(workingDir, importPath, { force: true }).then(() => {
-          board.refresh(); setStatusMsg("Board importiert");
-        }).catch((err: Error) => { setStatusMsg(`Import-Fehler: ${err.message}`); });
-      } else if (input === "n" || key.escape) {
-        setMode("board"); setStatusMsg("Import abgebrochen");
-      }
-      return;
-    }
-
-    // Texteingabe-Modi: kein Key-Handling hier (Komponenten handeln selbst)
-    if (mode === "add" || mode === "filter" || mode === "edit-notes" || mode === "edit-tags" || mode === "edit-title" || mode === "edit-description" || mode === "edit-deps" || mode === "export-path" || mode === "import-path") return;
-
-    if (mode === "detail") {
-      if (input === "q" || key.escape) { setMode("board"); setDetailTask(null); setStatusMsg(""); }
-      if (input === "e" && detailTask) {
-        setMode("edit-notes");
-      }
-      if (input === "t" && detailTask) {
-        setMode("edit-tags");
-      }
-      if (input === "T" && detailTask) {
-        setInputValue(detailTask.title);
-        setMode("edit-title");
-      }
-      if (input === "b" && detailTask) {
-        setInputValue(detailTask.description ?? "");
-        setMode("edit-description");
-      }
-      if (input === "D" && detailTask) {
-        setMode("edit-deps");
-      }
-      return;
-    }
-    if (mode === "help") {
-      if (input === "q" || key.escape || input === "?") { setMode("board"); }
-      return;
-    }
-    if (mode === "confirm-delete") {
-      if (input === "y" && selectedTask) {
-        board.deleteTask(selectedTask.id);
-        setStatusMsg(`"${selectedTask.title}" geloescht`);
-        setSelectedRow(Math.max(0, selectedRow - 1));
-      }
-      setMode("board");
-      return;
-    }
-
-    // Board-Modus
-    if (input === "q") { exit(); return; }
-
-    // Space = Verschiebe-Modus togglen
-    if (input === " " && selectedTask) { setMoving(!moving); setStatusMsg(moving ? "" : "VERSCHIEBEN"); return; }
-    if (key.escape) { if (moving) { setMoving(false); setStatusMsg(""); } else { setFilterText(""); setStatusMsg("Filter aufgehoben"); } return; }
-
-    if (moving && selectedTask) {
-      // Verschiebe-Modus: Pfeiltasten bewegen den Task
-      if (key.leftArrow && selectedCol > 0) {
-        const target = board.columns[selectedCol - 1]!;
-        board.moveTask(selectedTask.id, target.id);
-        setSelectedCol(selectedCol - 1); setSelectedRow(0);
-        setStatusMsg(`VERSCHIEBEN -> ${target.name}`);
-      }
-      if (key.rightArrow && selectedCol < board.columns.length - 1) {
-        const target = board.columns[selectedCol + 1]!;
-        board.moveTask(selectedTask.id, target.id);
-        setSelectedCol(selectedCol + 1); setSelectedRow(0);
-        setStatusMsg(`VERSCHIEBEN -> ${target.name}`);
-      }
-      if (key.upArrow) { board.reorderTask(selectedTask.id, "up"); setSelectedRow(Math.max(0, selectedRow - 1)); setStatusMsg("VERSCHIEBEN ↑"); }
-      if (key.downArrow) { board.reorderTask(selectedTask.id, "down"); setSelectedRow(Math.min(currentColTasks.length - 1, selectedRow + 1)); setStatusMsg("VERSCHIEBEN ↓"); }
-      return;
-    }
-
-    // Navigations-Modus: Pfeiltasten bewegen den Cursor
-    if (key.leftArrow) { setSelectedCol(Math.max(0, selectedCol - 1)); setSelectedRow(0); setStatusMsg(""); }
-    if (key.rightArrow) { setSelectedCol(Math.min(board.columns.length - 1, selectedCol + 1)); setSelectedRow(0); setStatusMsg(""); }
-    if (key.upArrow) { setSelectedRow(Math.max(0, selectedRow - 1)); setStatusMsg(""); }
-    if (key.downArrow) { setSelectedRow(Math.min(currentColTasks.length - 1, selectedRow + 1)); setStatusMsg(""); }
-    if (key.return && selectedTask) {
-      const full = board.getTask(selectedTask.id);
-      setDetailTask(full);
-      setMode("detail");
-    }
-    if (input === "t" && selectedTask && selectedTask.columnId === "backlog") { board.moveTask(selectedTask.id, "todo"); setStatusMsg(`"${selectedTask.title}" -> Todo`); }
-    if (input === "d" && selectedTask) { board.completeTask(selectedTask.id); setStatusMsg(`-> Done`); }
-    if (input === "n") { setInputValue(""); setMode("add"); }
-    if (input === "x" && selectedTask) { setMode("confirm-delete"); }
-    if (input === "a" && selectedTask) { board.archiveTask(selectedTask.id); setStatusMsg(`"${selectedTask.title}" archiviert`); setSelectedRow(Math.max(0, selectedRow - 1)); }
-    if (input === "/") { setInputValue(""); setMode("filter"); }
-    if (input === "r") { board.refresh(); setStatusMsg("Aktualisiert"); }
-    if (input === "?") { setMode("help"); }
-    if (input === "A") { setArchivedTasks(board.listArchived()); setMode("archive"); }
-    if (input === "E") {
-      const date = new Date().toISOString().slice(0, 10);
-      setInputValue(`./kanban-export-${date}.zip`);
-      setMode("export-path");
-    }
-    if (input === "I") { setInputValue(""); setMode("import-path"); }
+  // Komplette Tastatur-Kaskade (Modi, Navigation, Override-Dialog) lebt in
+  // use-input-modes.ts -- ausgelagert, weil app.tsx sonst die 420-Zeilen-
+  // Stoppgrenze aus den Task-Notes gerissen haette (siehe Kommentar dort und
+  // Bericht an team-lead). Reine Verhaltens-Verschiebung, State bleibt hier.
+  useInputModes({
+    workingDir,
+    exit,
+    board,
+    mode,
+    selectedCol,
+    selectedRow,
+    moving,
+    detailTask,
+    importPath,
+    pendingOverride,
+    selectedTask,
+    currentColTaskCount: currentColTasks.length,
+    setMode,
+    setStatusMsg,
+    setSelectedCol,
+    setSelectedRow,
+    setMoving,
+    setFilterText,
+    setDetailTask,
+    setInputValue,
+    setPendingOverride,
+    setArchivedTasks,
   });
 
   if (!boardExists(workingDir)) {
@@ -334,11 +259,21 @@ export function App({ workingDir }: AppProps) {
   };
 
   const handleAddSubmit = (val: string) => {
-    if (val.trim()) {
-      const targetCol = board.columns[selectedCol];
-      const colId = targetCol?.id;
-      board.addTask(val.trim(), colId);
-      setStatusMsg(`"${val.trim()}" -> ${targetCol?.name ?? "Todo"}`);
+    const title = val.trim();
+    if (title) {
+      const targetCol = board.displayColumns[selectedCol];
+      const result = board.addTask(title, targetCol?.id);
+      if (result.redirectedTo) {
+        // Eintrittsregel (P1-5 Teil 2): Anlegen ist keine Ausnahme-Situation,
+        // sondern eine Fehlbedienung -- still nach Todo umleiten, kein Dialog
+        // (Plan Abschnitt 3.4). Cursor folgt dorthin, analog zum bisherigen
+        // Verhalten bei normalem Anlegen.
+        const todoIdx = board.displayColumns.findIndex(c => c.id === "todo");
+        if (todoIdx !== -1) { setSelectedCol(todoIdx); setSelectedRow(0); }
+        setStatusMsg("Neue Tasks nur in Backlog oder Todo — angelegt in Todo");
+      } else {
+        setStatusMsg(`"${title}" -> ${targetCol?.name ?? "Todo"}`);
+      }
     }
     setMode("board");
   };
@@ -356,13 +291,13 @@ export function App({ workingDir }: AppProps) {
       <Box justifyContent="center" paddingY={0} flexShrink={0}>
         <Text bold color="#3b82f6"> KANBAN </Text>
         <Text bold color={ACCENT.muted}>|</Text>
-        <Text color={ACCENT.title}> {board.columns[selectedCol]?.name ?? "Board"} </Text>
+        <Text color={ACCENT.title}> {board.displayColumns[selectedCol]?.name ?? "Board"} </Text>
         {filterText && <Text color={ACCENT.notes}> [Filter: {filterText}]</Text>}
       </Box>
 
       {/* Board — flexibel, clippt bei Overflow */}
       <Box flexGrow={1} flexShrink={1} overflow="hidden">
-        <BoardView columns={board.columns} tasks={filteredTasks} selectedCol={selectedCol} selectedRow={selectedRow} moving={moving} />
+        <BoardView columns={board.displayColumns} tasks={filteredTasks} selectedCol={selectedCol} selectedRow={selectedRow} moving={moving} />
       </Box>
 
       {/* Footer — fixiert */}
@@ -373,6 +308,7 @@ export function App({ workingDir }: AppProps) {
         {mode === "export-path" && <ExportInput value={inputValue} onChange={setInputValue} onSubmit={handleExportSubmit} />}
         {mode === "import-path" && <ImportInput value={inputValue} onChange={setInputValue} onSubmit={handleImportSubmit} />}
         {mode === "import-confirm" && <ImportConfirm />}
+        {mode === "confirm-override" && pendingOverride && <OverrideConfirm reason={pendingOverride.reason} />}
         <StatusBar message={statusMsg} />
       </Box>
     </Box>

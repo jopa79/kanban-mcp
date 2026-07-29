@@ -112,6 +112,24 @@ export function ImportConfirm() {
   );
 }
 
+interface OverrideConfirmProps {
+  reason: string;
+}
+
+// Override-Bestaetigung fuer die Zustandsmaschine (P1-5, ADR 0002). Zeigt den
+// VOLLEN Ablehnungstext von TransitionService -- blockierende Tasks, Standzeit,
+// erreichtes Limit -- BEVOR der Ausweg angeboten wird. Ein Dialog, der das auf
+// "Regel verletzt. Trotzdem? (y/n)" kuerzt, macht den Override zur
+// Reflexbewegung (siehe ADR 0002, Begruendung).
+export function OverrideConfirm({ reason }: OverrideConfirmProps) {
+  return (
+    <Box flexDirection="column" paddingX={1}>
+      <Text color={ACCENT.wipWarn}>{reason}</Text>
+      <Text color={ACCENT.wipWarn} bold>Regel trotzdem brechen? (y/n)</Text>
+    </Box>
+  );
+}
+
 interface StatusBarProps {
   message: string;
 }

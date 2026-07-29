@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { Box, Text, useStdout } from "ink";
 import type { Column, Task } from "../core/types.ts";
 import { TaskCard } from "./task-card.tsx";
-import { getColumnColor, ACCENT } from "./theme.ts";
+import { getColumnColor, ACCENT, ORPHAN_COLUMN_ID } from "./theme.ts";
 
 // Geschaetzte Hoehe pro Task-Karte (Titel + Meta + Borders)
 const CARD_HEIGHT = 4;
@@ -45,10 +45,17 @@ export function BoardView({ columns, tasks, selectedCol, selectedRow, moving }: 
 
   const maxVisible = Math.max(2, Math.floor((termRows - LAYOUT_OVERHEAD) / CARD_HEIGHT));
 
+  // Bekannte (echte) Spalten-IDs -- fuer die virtuelle Sammelspalte (P1-6):
+  // ein Task gehoert dorthin, wenn seine column_id in KEINER echten Spalte
+  // steckt (Waise, ADR 0001), nicht per Ausschluss der Sentinel-ID selbst.
+  const knownColumnIds = new Set(columns.filter(c => c.id !== ORPHAN_COLUMN_ID).map(c => c.id));
+
   return (
     <Box flexDirection="row" width="100%">
       {columns.map((col, colIdx) => {
-        const colTasks = tasks.filter(t => t.columnId === col.id);
+        const colTasks = col.id === ORPHAN_COLUMN_ID
+          ? tasks.filter(t => !knownColumnIds.has(t.columnId))
+          : tasks.filter(t => t.columnId === col.id);
         const color = getColumnColor(col.id);
         const isActiveCol = colIdx === selectedCol;
 

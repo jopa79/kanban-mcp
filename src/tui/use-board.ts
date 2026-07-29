@@ -1,13 +1,58 @@
 // Custom Hook: Board-Daten laden und Task-Aktionen ausfuehren
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { watch, type FSWatcher } from "node:fs";
 import type { Column, Task, UpdateTaskInput } from "../core/types.ts";
 import { openDb, getBoardPaths, loadBoardConfig } from "../core/db.ts";
 import { BoardService } from "../core/board-service.ts";
 import { TaskService } from "../core/task-service.ts";
 import { NotesService } from "../core/notes-service.ts";
+import { ORPHAN_COLUMN_ID } from "./theme.ts";
 
-// Services erstellen (oeffnet DB)
+// Ergebnis einer Aktion, die von der Zustandsmaschine abgelehnt werden kann
+// (moveTask, completeTask). Statt zu werfen wird die Ablehnung bis in die
+// Komponente durchgereicht (P1-5) -- app.tsx entscheidet, ob ein
+// Override-Dialog gezeigt wird. 'reason' ist der VOLLE, handlungsleitende
+// Ablehnungstext aus TransitionService (ADR 0002) -- nie gekuerzt.
+export interface ActionResult {
+  ok: boolean;
+  reason?: string;
+}
+
+// Ergebnis von addTask: 'redirectedTo' ist nur gesetzt, wenn die urspruenglich
+// gewuenschte Spalte keine Eintrittsspalte war und still nach 'todo'
+// umgeleitet wurde (P1-5 Teil 2 -- Fehlbedienung, kein Override-Fall).
+export interface AddTaskResult {
+  redirectedTo?: string;
+}
+
+// Ob 'task' aktuell in einer Spalte sitzt, die es in 'columns' (echte Spalten
+// aus config.json) nicht gibt -- P1-6/ADR 0001. Wird sowohl fuer die virtuelle
+// Sammelspalte (board-view.tsx) als auch fuer die reason "orphan-recovery"
+// beim Herausbewegen (app.tsx) verwendet, damit die Pruefung nur an einer
+// Stelle lebt.
+export function isOrphanTask(task: Task, columns: Column[]): boolean {
+  return !columns.some((c) => c.id === task.columnId);
+}
+
+// Virtuelle Sammelspalte fuer Waisen -- taucht NIE in 'columns' auf (das wuerde
+// echte Kettenlogik verfaelschen, die 'columns' als Wahrheit behandelt),
+// sondern nur in der abgeleiteten 'displayColumns'-Liste fuer Rendering und
+// Cursor-Navigation (Plan Abschnitt 3.8, Kanban-Task P1-6). 'position' ist
+// hier rein informativ -- keine Kettenregel liest sie.
+function buildOrphanColumn(position: number): Column {
+  return {
+    id: ORPHAN_COLUMN_ID,
+    name: "⚠ Ohne Spalte",
+    position,
+    wipLimit: 0,
+    allowEntry: false,
+    isTerminal: false,
+  };
+}
+
+// Services erstellen (oeffnet DB). Liest config.json genau einmal -- der
+// Aufrufer (loadData) darf sie NICHT ein zweites Mal laden (siehe Kanban-Task
+// 7Lnjgzi08s7p / GitHub #35).
 function createServices(workingDir: string) {
   const paths = getBoardPaths(workingDir);
   const db = openDb(paths.dbPath);
@@ -15,30 +60,38 @@ function createServices(workingDir: string) {
   const boardService = new BoardService(db, config);
   const notesService = new NotesService(paths.kanbanDir);
   const taskService = new TaskService(db, boardService, notesService);
-  return { db, taskService, notesService, kanbanDir: paths.kanbanDir };
+  return { db, boardService, taskService, notesService, kanbanDir: paths.kanbanDir };
 }
 
-// Daten aus der DB laden
-function loadData(workingDir: string) {
-  const { db, taskService } = createServices(workingDir);
-  const config = loadBoardConfig(getBoardPaths(workingDir).configPath);
-  const boardService = new BoardService(db, config);
+// Daten aus der DB laden. Exportiert (statt modul-privat), damit der Zaehler
+// aus #35 ("loadBoardConfig wird pro loadData()-Aufruf genau einmal
+// aufgerufen") direkt getestet werden kann, ohne den Hook ueber einen
+// React-Renderer laufen zu lassen -- im Repo gibt es dafuer kein
+// Test-Werkzeug (kein ink-testing-library, keine neue Dependency ohne
+// Ruecksprache).
+export function loadData(workingDir: string) {
+  const { db, boardService, taskService } = createServices(workingDir);
   const columns = boardService.getColumns();
+  const orphanColumnIds = boardService.getOrphanColumnIds();
   const tasks = taskService.listTasks();
   db.close();
-  return { columns, tasks };
+  return { columns, tasks, orphanColumnIds };
 }
 
-// Task-Aktion ausfuehren (oeffnet und schliesst DB selbst)
-function withServices(workingDir: string, action: (ts: TaskService) => void) {
+// Task-Aktion ausfuehren (oeffnet und schliesst DB selbst). Generisch ueber
+// den Rueckgabewert der Aktion, damit moveTask/completeTask/addTask ein
+// Ergebnisobjekt statt eines geworfenen Fehlers durchreichen koennen (P1-5).
+function withServices<T>(workingDir: string, action: (ts: TaskService) => T): T {
   const { db, taskService } = createServices(workingDir);
-  action(taskService);
+  const result = action(taskService);
   db.close();
+  return result;
 }
 
 export function useBoard(workingDir: string) {
   const [columns, setColumns] = useState<Column[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [orphanColumnIds, setOrphanColumnIds] = useState<string[]>([]);
 
   // kanbanDir fuer Editor-Zugriff
   const kanbanDir = getBoardPaths(workingDir).kanbanDir;
@@ -47,7 +100,17 @@ export function useBoard(workingDir: string) {
     const data = loadData(workingDir);
     setColumns(data.columns);
     setTasks(data.tasks);
+    setOrphanColumnIds(data.orphanColumnIds);
   }, [workingDir]);
+
+  // Anzeige-Spalten: echte Spalten + virtuelle Sammelspalte, aber NUR wenn es
+  // tatsaechlich Waisen gibt (Plan Abschnitt 3.8). 'columns' bleibt dabei
+  // unangetastet -- Kettenlogik (canEnter/canMove-Aufrufer in app.tsx) muss
+  // sich immer auf die echte Liste verlassen koennen.
+  const displayColumns = useMemo(
+    () => (orphanColumnIds.length > 0 ? [...columns, buildOrphanColumn(columns.length)] : columns),
+    [columns, orphanColumnIds],
+  );
 
   // Auto-Refresh: DB-Datei ueberwachen fuer externe Aenderungen (z.B. MCP)
   const selfWrite = useRef(false);
@@ -65,22 +128,64 @@ export function useBoard(workingDir: string) {
   }, [workingDir, refresh]);
 
   // Eigene DB-Schreibvorgaenge: selfWrite-Flag setzen damit Watcher nicht doppelt refresht
-  const writeAndRefresh = useCallback((action: (ts: TaskService) => void) => {
+  const writeAndRefresh = useCallback(<T,>(action: (ts: TaskService) => T): T => {
     selfWrite.current = true;
-    withServices(workingDir, action);
+    const result = withServices(workingDir, action);
     refresh();
+    return result;
   }, [workingDir, refresh]);
 
-  const moveTask = useCallback((taskId: string, columnId: string) => {
-    writeAndRefresh((ts) => ts.moveTask(taskId, columnId));
+  // P1-5: wirft nicht mehr, sondern reicht die Ablehnung als ActionResult
+  // durch -- app.tsx entscheidet, ob dafuer ein Override-Dialog erscheint.
+  // 'opts.reason' transportiert u.a. "orphan-recovery" (P1-6), wenn die
+  // Quellspalte eine Waise ist -- das entscheidet der Aufrufer, nicht dieser
+  // Hook (der kennt nur 'columns', nicht den konkreten Task-Kontext der UI).
+  const moveTask = useCallback((taskId: string, columnId: string, opts?: { override?: boolean; reason?: string }): ActionResult => {
+    return writeAndRefresh((ts) => {
+      try {
+        ts.moveTask(taskId, columnId, { override: opts?.override, reason: opts?.reason });
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+      }
+    });
   }, [writeAndRefresh]);
 
-  const completeTask = useCallback((taskId: string) => {
-    writeAndRefresh((ts) => ts.completeTask(taskId));
-  }, [writeAndRefresh]);
+  // P1-5: Override-Pfad nutzt bewusst dasselbe moveTask({override:true}) in
+  // die Terminal-Spalte -- TaskService.completeTask() selbst kennt kein
+  // 'override' (Core unveraendert), und es soll auch keinen zweiten
+  // Umgehungsweg geben (siehe ADR 0002 / Bericht an team-lead).
+  const completeTask = useCallback((taskId: string, opts?: { override?: boolean }): ActionResult => {
+    return writeAndRefresh((ts) => {
+      try {
+        if (opts?.override) {
+          const terminal = columns.find((c) => c.isTerminal);
+          if (!terminal) throw new Error("Keine Terminal-Spalte konfiguriert");
+          ts.moveTask(taskId, terminal.id, { override: true });
+        } else {
+          ts.completeTask(taskId);
+        }
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+      }
+    });
+  }, [writeAndRefresh, columns]);
 
-  const addTask = useCallback((title: string, columnId?: string) => {
-    writeAndRefresh((ts) => ts.addTask({ title, columnId }));
+  // P1-5 Teil 2: addTask wirft ausschliesslich, wenn die Zielspalte keine
+  // Eintrittsspalte ist (canEnter, siehe transition-service.ts). Das ist eine
+  // Fehlbedienung, kein Override-Fall -- still nach 'todo' umleiten statt den
+  // Fehler zu zeigen (Plan Abschnitt 3.4).
+  const addTask = useCallback((title: string, columnId?: string): AddTaskResult => {
+    return writeAndRefresh((ts) => {
+      try {
+        ts.addTask({ title, columnId });
+        return {};
+      } catch {
+        ts.addTask({ title, columnId: "todo" });
+        return { redirectedTo: "todo" };
+      }
+    });
   }, [writeAndRefresh]);
 
   const deleteTask = useCallback((taskId: string) => {
@@ -148,5 +253,10 @@ export function useBoard(workingDir: string) {
     return result;
   }, [workingDir]);
 
-  return { columns, tasks, kanbanDir, refresh, moveTask, completeTask, addTask, deleteTask, updateTask, reorderTask, archiveTask, listArchived, restoreTask, getTask, getDependencies, getDependents, addDependency, removeDependency, purgeArchive };
+  return {
+    columns, displayColumns, tasks, orphanColumnIds, kanbanDir, refresh,
+    moveTask, completeTask, addTask, deleteTask, updateTask, reorderTask,
+    archiveTask, listArchived, restoreTask, getTask, getDependencies,
+    getDependents, addDependency, removeDependency, purgeArchive,
+  };
 }

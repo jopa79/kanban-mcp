@@ -67,11 +67,16 @@ export function formatTaskDetail(task: Task): string {
   return lines.join("\n");
 }
 
-// Board-Status als kompakte Uebersicht
+// Board-Status als kompakte Uebersicht. 'orphanCount' (P1-6, ADR 0001): Tasks,
+// deren Spalte in config.json fehlt -- werden separat ausgewiesen, nicht in
+// einer der regulaeren Spaltenzeilen versteckt. 'total' rechnet sie NICHT
+// automatisch mit ein: formatStatus rendert nur, was der Aufrufer uebergibt,
+// die Verantwortung fuer eine korrekte Summe liegt bei status.ts.
 export function formatStatus(
   boardName: string,
   columns: Array<{ column: string; columnId: string; count: number }>,
   total: number,
+  orphanCount = 0,
 ): string {
   const lines: string[] = [
     `${COLORS.bold}${boardName}${COLORS.reset} ${COLORS.dim}(${total} Tasks)${COLORS.reset}`,
@@ -83,6 +88,12 @@ export function formatStatus(
     const bar = "█".repeat(Math.min(col.count, 20));
     lines.push(
       `  ${color}${col.column.padEnd(12)}${COLORS.reset} ${COLORS.dim}${col.count.toString().padStart(3)}${COLORS.reset} ${color}${bar}${COLORS.reset}`,
+    );
+  }
+
+  if (orphanCount > 0) {
+    lines.push(
+      `  ${COLORS.yellow}⚠ Ohne Spalte${COLORS.reset} ${COLORS.dim}${orphanCount.toString().padStart(3)}${COLORS.reset}`,
     );
   }
 
