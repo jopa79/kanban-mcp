@@ -423,15 +423,26 @@ export class TaskService extends ArchiveService {
     return deps.some(d => d.columnId !== terminal.id && !d.archived);
   }
 
-  // Board-Status
-  getStatus(): { columns: Array<{ column: string; columnId: string; count: number }>; total: number } {
+  // Board-Status.
+  //
+  // `total` zaehlt Waisen mit -- Tasks, deren Spalte in config.json fehlt.
+  // Ohne sie waere die Summe kleiner als die Zahl der tatsaechlich
+  // vorhandenen Tasks, und CLI und MCP wuerden verschiedene Zahlen zeigen.
+  // `orphanCount` steht separat, damit Aufrufer sie kenntlich machen koennen.
+  getStatus(): {
+    columns: Array<{ column: string; columnId: string; count: number }>;
+    total: number;
+    orphanCount: number;
+  } {
     const columns = this.boardService.getColumns();
     const result = columns.map((col) => ({
       column: col.name,
       columnId: col.id,
       count: this.boardService.getColumnTaskCount(col.id),
     }));
-    const total = result.reduce((sum, c) => sum + c.count, 0);
-    return { columns: result, total };
+    const known = new Set(columns.map((c) => c.id));
+    const orphanCount = this.listTasks().filter((t) => !known.has(t.columnId)).length;
+    const total = result.reduce((sum, c) => sum + c.count, 0) + orphanCount;
+    return { columns: result, total, orphanCount };
   }
 }

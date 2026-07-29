@@ -7,30 +7,24 @@ export const statusCommand = new Command("status")
   .description("Board-Uebersicht anzeigen")
   .option("--json", "Ausgabe als JSON")
   .action((options) => {
-    const { taskService, boardService, config } = getContext();
-    const status = taskService.getStatus();
+    const { taskService, config } = getContext();
 
     // Waisen (P1-6, ADR 0001): Tasks, deren Spalte in config.json fehlt.
-    // getStatus() zaehlt nur die regulaeren Spalten (task-service.ts bleibt
-    // unangetastet -- Core-Aenderung, siehe Bericht an team-lead), deshalb
-    // hier zusaetzlich einrechnen, statt sie in 'total' verschwinden zu
-    // lassen. 'nicht verstecken' gilt auch fuer 'kanban status'.
-    const orphanColumnIds = new Set(boardService.getOrphanColumnIds());
-    const orphanCount = orphanColumnIds.size > 0
-      ? taskService.listTasks().filter((t) => orphanColumnIds.has(t.columnId)).length
-      : 0;
-    const total = status.total + orphanCount;
+    // getStatus() zaehlt sie seit e5c6e14 selbst mit und liefert sie separat
+    // als orphanCount -- hier NICHT erneut addieren, sonst doppelt gezaehlt.
+    // Eine Quelle fuer beide Oberflaechen: 'kanban status' und MCP
+    // 'kanban_status' zeigen dieselbe Summe.
+    const status = taskService.getStatus();
 
-    // JSON-Ausgabe: Status-Objekt mit Board-Name. 'total' wird korrigiert
-    // (schliesst Waisen ein), 'orphaned' ist ein rein additives Feld -- kein
-    // externer Konsument haengt mehr an diesem Format (siehe a9bb146: der
+    // JSON-Ausgabe: 'orphaned' ist ein rein additives Feld -- kein externer
+    // Konsument haengt mehr an diesem Format (siehe a9bb146: der
     // ralph-tracker-Plugin war der letzte, ist entfernt).
     if (options.json) {
-      console.log(JSON.stringify({ board: config.name, ...status, total, orphaned: { count: orphanCount } }));
+      console.log(JSON.stringify({ board: config.name, ...status, orphaned: { count: status.orphanCount } }));
       return;
     }
 
     console.log();
-    console.log(formatStatus(config.name, status.columns, total, orphanCount));
+    console.log(formatStatus(config.name, status.columns, status.total, status.orphanCount));
     console.log();
   });
