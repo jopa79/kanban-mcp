@@ -2,10 +2,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerTools } from "./tools.ts";
+// Einzige Quelle fuer die Versionsnummer -- package.json, nicht hier UND in
+// src/index.ts getrennt hochgezaehlt.
+import pkg from "../../package.json" with { type: "json" };
 
 export async function startMcpServer(workingDir: string): Promise<void> {
   const server = new McpServer(
-    { name: "kanban-mcp", version: "0.1.0" },
+    { name: "kanban-mcp", version: pkg.version },
     { capabilities: { tools: {} } },
   );
 

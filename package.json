@@ -1,11 +1,32 @@
 {
   "name": "kanban-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Terminal Kanban Board mit MCP-Server fuer Claude Code",
+  "main": "src/index.ts",
   "module": "src/index.ts",
   "type": "module",
-  "private": true,
+  "private": false,
   "license": "MIT",
+  "bin": {
+    "kanban": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "bun": ">=1.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jopa79/kanban-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jopa79/kanban-mcp/issues"
+  },
+  "homepage": "https://github.com/jopa79/kanban-mcp#readme",
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun --external react-devtools-core",
@@ -24,6 +45,7 @@
     "ink": "^6.8.0",
     "ink-text-input": "^6.0.0",
     "nanoid": "^5.1.6",
-    "react": "^19.2.4"
+    "react": "^19.2.4",
+    "zod": "^4.0.0"
   }
 }

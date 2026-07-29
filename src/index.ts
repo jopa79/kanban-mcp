@@ -1,6 +1,10 @@
 #!/usr/bin/env bun
 // Kanban MCP — CLI Entry Point
 import { Command } from "commander";
+// Einzige Quelle fuer die Versionsnummer -- package.json, nicht hier UND dort
+// getrennt hochgezaehlt (siehe auch src/mcp/server.ts). package.json wird von
+// npm/Bun beim Publish immer mitgeliefert, unabhaengig vom 'files'-Feld.
+import pkg from "../package.json" with { type: "json" };
 import { initCommand } from "./cli/commands/init.ts";
 import { addCommand } from "./cli/commands/add.ts";
 import { listCommand } from "./cli/commands/list.ts";
@@ -25,7 +29,7 @@ const program = new Command();
 program
   .name("kanban")
   .description("Terminal Kanban Board mit MCP-Server")
-  .version("0.1.0");
+  .version(pkg.version);
 
 // CLI Commands registrieren
 program.addCommand(initCommand);

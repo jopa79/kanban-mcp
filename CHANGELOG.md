@@ -7,6 +7,48 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-29
+
+> **Bestehendes Board?** Erst `kanban migrate` ausfuehren — siehe
+> [Migration](#migration-von-01x-auf-020) unten. Ohne Migration verweigert
+> jeder Befehl den Start.
+
+### Breaking Changes
+
+- **MCP-Tools verlangen `reportedBy`.** `kanban_add_task`,
+  `kanban_add_task_checked`, `kanban_move_task` und `kanban_complete_task`
+  scheitern ohne das Feld mit einem Validierungsfehler. CLI und TUI bleiben
+  unveraendert (`--by <name>`, optional, Default `user`). Details siehe
+  unten unter Changed.
+- **`addTask` akzeptiert nur noch Eintrittsspalten** (`allowEntry: true`, im
+  Default-Board: Backlog, Todo). Ein Task entsteht nie mehr direkt in In
+  Progress, Review oder Done — auch nicht per Skript oder Import-Altlast.
+  Details siehe unten unter Changed.
+- **Uebergaenge werden geprueft.** Mehr als einen Schritt vorwaerts springen,
+  ein volles WIP-Limit oder eine offene Abhaengigkeit fuehren zur Ablehnung
+  (`kanban move`/`kanban done` scheitern mit einer Meldung, die den naechsten
+  gueltigen Schritt nennt). Rueckwaerts bleibt uneingeschraenkt. Details
+  siehe unten unter Changed.
+
+### Migration von 0.1.x auf 0.2.0
+
+**Ein bestehendes Board (Schema-Version < 3) verweigert ab dieser Version
+jeden Zugriff, bis es migriert ist** — CLI, TUI und MCP brechen einheitlich
+ab und nennen den Befehl; `kanban export` verweigert sich ebenfalls, statt
+ein unvollstaendiges ZIP zu erzeugen. Kein Datenverlust: vor jeder Migration
+entsteht automatisch ein Backup (`VACUUM INTO` nach
+`.kanban/board.db.bak-v2`, WAL-sicher); ein bestehendes Backup wird nie
+ueberschrieben, sondern zeitgestempelt ergaenzt.
+
+```bash
+kanban migrate            # Vorschau: Ist-Version, Ziel-Version, geplante Schritte
+kanban migrate --dry-run  # dasselbe, endet dort ohne nach --yes zu fragen
+kanban migrate --yes      # fuehrt die Migration tatsaechlich aus
+```
+
+Siehe `docs/decisions/0001-spalten-in-config-statt-datenbank.md` fuer den
+Hintergrund (Spalten wandern aus einer DB-Tabelle in `config.json`).
+
 ### Added
 
 - Schema v3: Spalten-Konfiguration in `.kanban/config.json` statt in einer
@@ -453,25 +495,28 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Changed
 
-- **Breaking (P1-2):** `TaskService.addTask` akzeptiert nur noch Spalten mit
-  `allowEntry: true` (Default-Board: `backlog`, `todo`) — `addTask({columnId:
-  "in-progress"})` etc. wirft jetzt einen Fehler statt zu erstellen
-- **Breaking (P1-2):** `TaskService.moveTask` und `completeTask` koennen
-  ablehnen. `kanban done`/`kanban_complete_task` scheitert, wenn der Task
-  nicht in der Spalte direkt vor der Terminal-Spalte steht (Default: Review);
-  `moveTask` scheitert bei Kettenverstoss (mehr als ein Schritt vorwaerts),
-  vollem WIP-Limit der Zielspalte oder — neu — wenn der Task blockiert ist
-  und vorwaerts in eine Arbeitsspalte soll (siehe Added). Betroffene
-  bestehende Aufrufer, noch nicht angepasst (folgt in eigenen Tasks):
-  `src/tui/app.tsx` (`n`/`d`/Verschiebe-Modus — Override-Dialog folgt in
-  P1-5), `scripts/seed-demo.ts` (legt Tasks z.T. direkt in mittleren Spalten
-  an). Das README-Beispiel `-c in-progress` ist mit P1-3 korrigiert (siehe
-  unten)
-- **Breaking (P1-3):** `kanban_add_task`, `kanban_add_task_checked`,
-  `kanban_move_task`, `kanban_complete_task` verlangen jetzt `reportedBy`.
-  Bestehende Agent-Konfigurationen, die diese vier MCP-Tools ohne das Feld
-  aufrufen, scheitern mit einem Zod-Validierungsfehler, bis sie es mitgeben
-- **Breaking (P1-4):** `kanban_add_task_checked` nennt bei einer Ablehnung
+- **(P1-2, siehe Breaking Changes oben):** `TaskService.addTask` akzeptiert
+  nur noch Spalten mit `allowEntry: true` (Default-Board: `backlog`, `todo`)
+  — `addTask({columnId: "in-progress"})` etc. wirft jetzt einen Fehler statt
+  zu erstellen
+- **(P1-2, siehe Breaking Changes oben):** `TaskService.moveTask` und
+  `completeTask` koennen ablehnen. `kanban done`/`kanban_complete_task`
+  scheitert, wenn der Task nicht in der Spalte direkt vor der Terminal-Spalte
+  steht (Default: Review); `moveTask` scheitert bei Kettenverstoss (mehr als
+  ein Schritt vorwaerts), vollem WIP-Limit der Zielspalte oder — neu — wenn
+  der Task blockiert ist und vorwaerts in eine Arbeitsspalte soll (siehe
+  Added). Der Override-Dialog fuer die davon betroffenen bestehenden
+  Aufrufer (`src/tui/app.tsx`: `n`/`d`/Verschiebe-Modus) ist seit P1-5 in
+  der TUI eingebaut (siehe unten); das README-Beispiel `-c in-progress` ist
+  seit P1-3 korrigiert. `scripts/seed-demo.ts` legt Tasks weiterhin z.T.
+  direkt in `in-progress`/`done` an und ist seit dieser Aenderung nicht mehr
+  lauffaehig — kein Produktionscode, aber noch offen
+- **(P1-3, siehe Breaking Changes oben):** `kanban_add_task`,
+  `kanban_add_task_checked`, `kanban_move_task`, `kanban_complete_task`
+  verlangen jetzt `reportedBy`. Bestehende Agent-Konfigurationen, die diese
+  vier MCP-Tools ohne das Feld aufrufen, scheitern mit einem
+  Zod-Validierungsfehler, bis sie es mitgeben
+- **(P1-4):** `kanban_add_task_checked` nennt bei einer Ablehnung
   nicht mehr nur Titel, sondern Titel und IDs der aehnlichen Tasks, und
   traegt jetzt `isError: true` (vorher fehlte das Flag komplett — eine
   Ablehnung sah fuer ein Modell wie ein Erfolg mit Hinweis aus)
