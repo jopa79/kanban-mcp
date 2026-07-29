@@ -1,6 +1,6 @@
 // Tests fuer ArchiveService
 import { test, expect, describe, afterEach } from "bun:test";
-import { createTestBoard, type TestContext } from "./helpers.ts";
+import { createTestBoard, addTaskInColumn, type TestContext } from "./helpers.ts";
 
 describe("ArchiveService", () => {
   let ctx: TestContext;
@@ -9,7 +9,7 @@ describe("ArchiveService", () => {
   describe("archiveTasks", () => {
     test("archiviert Tasks aus Done-Spalte", () => {
       ctx = createTestBoard();
-      const task = ctx.taskService.addTask({ title: "Done Task", columnId: "done" });
+      const task = addTaskInColumn(ctx, "Done Task", "done");
       const result = ctx.taskService.archiveTasks();
       expect(result.archivedCount).toBe(1);
       expect(result.tasks[0]!.id).toBe(task.id);
@@ -24,14 +24,14 @@ describe("ArchiveService", () => {
 
     test("archiviert aus bestimmter Spalte", () => {
       ctx = createTestBoard();
-      ctx.taskService.addTask({ title: "Review Task", columnId: "review" });
+      addTaskInColumn(ctx, "Review Task", "review");
       const result = ctx.taskService.archiveTasks({ columnId: "review" });
       expect(result.archivedCount).toBe(1);
     });
 
     test("dryRun veraendert nichts", () => {
       ctx = createTestBoard();
-      ctx.taskService.addTask({ title: "Done Task", columnId: "done" });
+      addTaskInColumn(ctx, "Done Task", "done");
       const dryResult = ctx.taskService.archiveTasks({ dryRun: true });
       expect(dryResult.archivedCount).toBe(1);
       // Task ist noch da (nicht archiviert)
@@ -41,7 +41,7 @@ describe("ArchiveService", () => {
 
     test("archivierte Tasks erscheinen nicht in listTasks", () => {
       ctx = createTestBoard();
-      ctx.taskService.addTask({ title: "Done Task", columnId: "done" });
+      addTaskInColumn(ctx, "Done Task", "done");
       ctx.taskService.archiveTasks();
       expect(ctx.taskService.listTasks()).toHaveLength(0);
     });
@@ -50,7 +50,7 @@ describe("ArchiveService", () => {
   describe("restoreTask", () => {
     test("stellt archivierten Task wieder her", () => {
       ctx = createTestBoard();
-      const task = ctx.taskService.addTask({ title: "Restore Me", columnId: "done" });
+      const task = addTaskInColumn(ctx, "Restore Me", "done");
       ctx.taskService.archiveTasks();
       const restored = ctx.taskService.restoreTask(task.id);
       expect(restored.archived).toBe(false);
@@ -59,7 +59,7 @@ describe("ArchiveService", () => {
 
     test("stellt in bestimmte Spalte wieder her", () => {
       ctx = createTestBoard();
-      const task = ctx.taskService.addTask({ title: "X", columnId: "done" });
+      const task = addTaskInColumn(ctx, "X", "done");
       ctx.taskService.archiveTasks();
       const restored = ctx.taskService.restoreTask(task.id, "in-progress");
       expect(restored.columnId).toBe("in-progress");
@@ -73,7 +73,7 @@ describe("ArchiveService", () => {
 
     test("wirft Fehler bei unbekannter Ziel-Spalte", () => {
       ctx = createTestBoard();
-      const task = ctx.taskService.addTask({ title: "X", columnId: "done" });
+      const task = addTaskInColumn(ctx, "X", "done");
       ctx.taskService.archiveTasks();
       expect(() => ctx.taskService.restoreTask(task.id, "nope")).toThrow("existiert nicht");
     });
@@ -82,7 +82,7 @@ describe("ArchiveService", () => {
   describe("purgeArchive", () => {
     test("loescht archivierte Tasks permanent", () => {
       ctx = createTestBoard();
-      ctx.taskService.addTask({ title: "X", columnId: "done" });
+      addTaskInColumn(ctx, "X", "done");
       ctx.taskService.archiveTasks();
       const result = ctx.taskService.purgeArchive();
       expect(result.deletedCount).toBe(1);
@@ -93,7 +93,7 @@ describe("ArchiveService", () => {
 
     test("dryRun loescht nichts", () => {
       ctx = createTestBoard();
-      ctx.taskService.addTask({ title: "X", columnId: "done" });
+      addTaskInColumn(ctx, "X", "done");
       ctx.taskService.archiveTasks();
       const dryResult = ctx.taskService.purgeArchive({ dryRun: true });
       expect(dryResult.deletedCount).toBe(1);
@@ -106,8 +106,8 @@ describe("ArchiveService", () => {
   describe("getArchiveStats", () => {
     test("zaehlt archivierte Tasks nach Spalte", () => {
       ctx = createTestBoard();
-      ctx.taskService.addTask({ title: "A", columnId: "done" });
-      ctx.taskService.addTask({ title: "B", columnId: "done" });
+      addTaskInColumn(ctx, "A", "done");
+      addTaskInColumn(ctx, "B", "done");
       ctx.taskService.archiveTasks();
       const stats = ctx.taskService.getArchiveStats();
       expect(stats.total).toBe(2);

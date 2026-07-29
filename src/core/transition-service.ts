@@ -18,6 +18,12 @@ const ID_PREFIX_LENGTH = 8;
 export interface TransitionCheck {
   allowed: boolean;
   reason?: string; // handlungsleitender Text, nur gesetzt wenn !allowed
+  // P1-2: unterscheidet WIP- von Kettenablehnungen (unbekannte Zielspalte
+  // zaehlt strukturell zur Kette). TaskService.moveTask braucht das fuer
+  // opts.wipPolicy: "log" -- die Kettenregel muss dabei hart bleiben, ein
+  // reiner WIP-Verstoss darf durchgewunken (und protokolliert) werden. Nur
+  // gesetzt wenn !allowed.
+  violation?: "chain" | "wip";
 }
 
 // Formatiert eine Zeitspanne seit einem ISO-Zeitstempel als deutschsprachigen
@@ -69,6 +75,7 @@ export class TransitionService {
         reason:
           `Verschieben abgelehnt: Zielspalte '${toColumnId}' existiert nicht im Board.\n\n` +
           `Gueltige Spalten: ${columns.map((c) => c.id).join(", ")}.`,
+        violation: "chain",
       };
     }
 
@@ -84,6 +91,7 @@ export class TransitionService {
           `Die Kette ist vorwaerts strikt: aus ${sourceCol.name} geht es nur nach ${nextCol.name}.\n` +
           `Rueckwaerts ist jeder Sprung erlaubt.\n\n` +
           `Naechster gueltiger Schritt: kanban_move_task(id, "${nextCol.id}")`,
+        violation: "chain",
       };
     }
 
@@ -250,6 +258,7 @@ export class TransitionService {
         `Blockiert seit:\n${lines.join("\n")}\n\n` +
         `Moeglichkeiten: ${moveHint},\n` +
         `oder das WIP-Limit in .kanban/config.json anheben.`,
+      violation: "wip",
     };
   }
 }

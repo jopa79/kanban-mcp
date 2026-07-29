@@ -67,14 +67,19 @@ describe("exportBoard", () => {
     const t1 = ctx.taskService.addTask({ title: "Task A", notes: "Notiz A" });
     const t2 = ctx.taskService.addTask({ title: "Task B", columnId: "todo" });
     ctx.taskService.addDependency(t2.id, t1.id);
+    // addTask() protokolliert seit P1-2 selbst schon die Entstehung (from_column
+    // NULL) -- t1 und t2 haben also bereits je eine Transition, bevor unten
+    // noch eine dritte (manuell) dazukommt.
 
     // priority/dueDate sind echte Spalten seit Paket 0, aber das Setzen ueber
     // CLI/MCP kommt erst in Paket 2 (nicht Teil dieses Tasks) — deshalb hier
     // direkt per SQL gesetzt, um die Export/Import-Plumbing zu pruefen.
     ctx.db.run("UPDATE tasks SET priority = ?, due_date = ? WHERE id = ?", ["high", "2026-08-01", t1.id]);
 
-    // Transitions schreiben ist Paket 1 (nicht Teil dieses Tasks) — Zeile
-    // direkt per SQL eingefuegt, um Export/Import der Tabelle zu pruefen.
+    // Eine weitere, manuell konstruierte Transition fuer t1 -- zusaetzlich zu
+    // der von addTask() bereits erzeugten -- um Export/Import einer echten
+    // Mehrfach-Historie zu pruefen (P1-2, war vorher nur eine einzelne
+    // synthetische Zeile, weil addTask() selbst noch nichts protokollierte).
     const now = new Date().toISOString();
     ctx.db.run(
       `INSERT INTO transitions (task_id, from_column, to_column, reported_by, reason, was_override, created_at)
@@ -98,7 +103,9 @@ describe("exportBoard", () => {
     const boardJson = JSON.parse(readFileSync(join(inspectDir, "board.json"), "utf-8"));
     expect(boardJson.version).toBe(3);
     expect(Array.isArray(boardJson.transitions)).toBe(true);
-    expect(boardJson.transitions).toHaveLength(1);
+    // 3 = je 1 Entstehungs-Transition fuer t1 und t2 (addTask(), P1-2) + die
+    // manuell eingefuegte "Testtransition" oben.
+    expect(boardJson.transitions).toHaveLength(3);
     expect(boardJson.columns).toEqual(originalColumns);
     for (const col of boardJson.columns) {
       expect(col).not.toHaveProperty("position");
@@ -134,9 +141,12 @@ describe("exportBoard", () => {
       to_column: string;
       reason: string | null;
     }>;
-    expect(transitions).toHaveLength(1);
-    expect(transitions[0]!.to_column).toBe("todo");
-    expect(transitions[0]!.reason).toBe("Testtransition");
+    // 2 = die von addTask() erzeugte Entstehungs-Transition + die manuelle
+    // "Testtransition" -- beide muessen den Rundtrip ueberstehen.
+    expect(transitions).toHaveLength(2);
+    const testTransition = transitions.find((t) => t.reason === "Testtransition");
+    expect(testTransition).toBeDefined();
+    expect(testTransition!.to_column).toBe("todo");
     db2.close();
 
     const notesService = new NotesService(getBoardPaths(newDir).kanbanDir);

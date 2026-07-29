@@ -7,6 +7,7 @@ import { initBoard, openDb, getBoardPaths, loadBoardConfig } from "../src/core/d
 import { BoardService } from "../src/core/board-service.ts";
 import { TaskService } from "../src/core/task-service.ts";
 import { NotesService } from "../src/core/notes-service.ts";
+import type { Task } from "../src/core/types.ts";
 
 export interface TestContext {
   dir: string;
@@ -34,6 +35,19 @@ export function createTestBoard(name = "Test Board"): TestContext {
   };
 
   return { dir, db, boardService, taskService, notesService, cleanup };
+}
+
+// Legt einen Task direkt in einer beliebigen Spalte an (P1-2). Fuer Tests,
+// die nur "einen Task in Spalte X" als Fixture brauchen -- z.B. Archiv-Tests
+// -- und sich nicht dafuer interessieren, wie er dorthin kam. addTask()
+// erlaubt seit P1-2 nur noch Eintrittsspalten, deshalb hier ueber "todo" +
+// moveTask(..., {override: true}) -- die oeffentliche, protokollierte
+// Umgehung -- statt roher SQL-Writes, damit Fixtures denselben Code
+// durchlaufen wie echte Aufrufer.
+export function addTaskInColumn(ctx: TestContext, title: string, columnId: string): Task {
+  const task = ctx.taskService.addTask({ title });
+  if (task.columnId === columnId) return task;
+  return ctx.taskService.moveTask(task.id, columnId, { override: true });
 }
 
 // --- v2-Fixture fuer Migrations-Tests (P0-4) ---

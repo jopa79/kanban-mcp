@@ -4,7 +4,7 @@ import { test, expect, describe, afterEach } from "bun:test";
 import { createTestBoard, type TestContext } from "./helpers.ts";
 import { BoardService } from "../src/core/board-service.ts";
 import { TransitionService } from "../src/core/transition-service.ts";
-import type { ColumnConfig, Task } from "../src/core/types.ts";
+import type { AddTaskInput, ColumnConfig, Task } from "../src/core/types.ts";
 
 // Baut ein Task-Fixture mit sinnvollen Defaults — fuer canMove/canEnter/
 // canComplete reicht ein reines Objekt, es muss nicht in der DB stehen.
@@ -40,6 +40,36 @@ function makeBoardService(db: TestContext["db"], columns: ColumnConfig[]): Board
     schemaVersion: 3,
     columns,
   });
+}
+
+// Legt einen Task per addTask() an (immer in einer Eintrittsspalte, wie es
+// seit P1-2 verlangt wird) und versetzt ihn danach per SQL direkt in
+// 'columnId'. NICHT ueber moveTask(), damit hier -- anders als in
+// task-service-transitions.test.ts -- keine Transition entsteht: mehrere
+// Tests in diesem File pruefen gezielt den Fallback auf tasks.updated_at bei
+// fehlender Historie, und ein automatisch geloggter "gerade eben"-Uebergang
+// wuerde diesen Fallback-Fall unpruefbar machen.
+function placeTaskInColumn(ctx: TestContext, title: string, columnId: string, extra?: Omit<AddTaskInput, "title" | "columnId">): Task {
+  const task = ctx.taskService.addTask({ title, ...extra });
+  if (task.columnId === columnId) return task;
+  ctx.db.run("UPDATE tasks SET column_id = ? WHERE id = ?", [columnId, task.id]);
+  return { ...task, columnId };
+}
+
+// Legt einen rohen Task-Datensatz per SQL an, OHNE ueber addTask() zu gehen.
+// Fuer die log()/history()-Tests unten: addTask() protokolliert seit P1-2
+// selbst schon die Entstehung (from_column NULL) -- das wuerde jede Laengen-
+// und Reihenfolge-Assertion in diesem Block verfaelschen, der ganz bewusst
+// nur die von den Tests selbst gesetzten Transitions sehen will.
+function insertBareTask(ctx: TestContext, title: string): string {
+  const id = `bare-${Math.random().toString(36).slice(2, 10)}`;
+  const now = new Date().toISOString();
+  ctx.db.run(
+    `INSERT INTO tasks (id, title, column_id, created_by, position, created_at, updated_at)
+     VALUES (?, ?, 'todo', 'user', 0, ?, ?)`,
+    [id, title, now, now],
+  );
+  return id;
 }
 
 const DEFAULT_COLUMN_IDS = ["backlog", "todo", "in-progress", "review", "done"];
@@ -136,14 +166,15 @@ describe("TransitionService", () => {
       const result = svc.canMove(makeTask({ columnId: "todo" }), "nope");
       expect(result.allowed).toBe(false);
       expect(result.reason).toContain("nope");
+      expect(result.violation).toBe("chain");
     });
 
     test("Waisen-Spalte als Quelle -> alles erlaubt, auch in eine voll ausgelastete Zielspalte", () => {
       ctx = createTestBoard();
       svc = new TransitionService(ctx.db, ctx.boardService);
-      ctx.taskService.addTask({ title: "A", columnId: "in-progress" });
-      ctx.taskService.addTask({ title: "B", columnId: "in-progress" });
-      ctx.taskService.addTask({ title: "C", columnId: "in-progress" });
+      placeTaskInColumn(ctx, "A", "in-progress");
+      placeTaskInColumn(ctx, "B", "in-progress");
+      placeTaskInColumn(ctx, "C", "in-progress");
 
       const task = makeTask({ columnId: "geloeschte-spalte" });
       expect(svc.canMove(task, "done").allowed).toBe(true);
@@ -164,6 +195,7 @@ describe("TransitionService", () => {
       expect(result.reason).toContain("Review");
       expect(result.reason).toContain("In Progress");
       expect(result.reason).toContain('kanban_move_task(id, "in-progress")');
+      expect(result.violation).toBe("chain");
     });
   });
 
@@ -172,9 +204,9 @@ describe("TransitionService", () => {
       ctx = createTestBoard();
       svc = new TransitionService(ctx.db, ctx.boardService);
       // In Progress hat wipLimit 3 (Default-Board)
-      ctx.taskService.addTask({ title: "A", columnId: "in-progress" });
-      ctx.taskService.addTask({ title: "B", columnId: "in-progress" });
-      ctx.taskService.addTask({ title: "C", columnId: "in-progress" });
+      placeTaskInColumn(ctx, "A", "in-progress");
+      placeTaskInColumn(ctx, "B", "in-progress");
+      placeTaskInColumn(ctx, "C", "in-progress");
 
       const incoming = makeTask({ title: "D", columnId: "todo" });
       const result = svc.canMove(incoming, "in-progress");
@@ -182,13 +214,17 @@ describe("TransitionService", () => {
       expect(result.allowed).toBe(false);
       expect(result.reason).toContain("In Progress");
       expect(result.reason).toContain("voll (3 von 3)");
+      // P1-2: 'violation' unterscheidet WIP- von Kettenablehnungen, damit
+      // TaskService.moveTask(..., {wipPolicy: "log"}) gezielt nur WIP-Verstoesse
+      // durchwinken kann, waehrend die Kettenregel hart bleibt.
+      expect(result.violation).toBe("wip");
     });
 
     test("Zielspalte unter dem Limit erlaubt den Move", () => {
       ctx = createTestBoard();
       svc = new TransitionService(ctx.db, ctx.boardService);
-      ctx.taskService.addTask({ title: "A", columnId: "in-progress" });
-      ctx.taskService.addTask({ title: "B", columnId: "in-progress" });
+      placeTaskInColumn(ctx, "A", "in-progress");
+      placeTaskInColumn(ctx, "B", "in-progress");
 
       const incoming = makeTask({ title: "C", columnId: "todo" });
       expect(svc.canMove(incoming, "in-progress").allowed).toBe(true);
@@ -207,13 +243,9 @@ describe("TransitionService", () => {
     test("WIP-Ablehnung nennt blockierende Tasks, Wartezeit (Fallback tasks.updated_at) und naechsten Schritt", () => {
       ctx = createTestBoard();
       svc = new TransitionService(ctx.db, ctx.boardService);
-      const blocker = ctx.taskService.addTask({
-        title: "Export-Service testen",
-        columnId: "in-progress",
-        assignedTo: "backend",
-      });
-      ctx.taskService.addTask({ title: "B", columnId: "in-progress" });
-      ctx.taskService.addTask({ title: "C", columnId: "in-progress" });
+      const blocker = placeTaskInColumn(ctx, "Export-Service testen", "in-progress", { assignedTo: "backend" });
+      placeTaskInColumn(ctx, "B", "in-progress");
+      placeTaskInColumn(ctx, "C", "in-progress");
 
       // Keine Transition-Historie fuer 'blocker' -> Fallback auf tasks.updated_at.
       // 4 Tage in die Vergangenheit setzen.
@@ -235,9 +267,9 @@ describe("TransitionService", () => {
     test("WIP-Ablehnung bevorzugt transitions.created_at vor tasks.updated_at", () => {
       ctx = createTestBoard();
       svc = new TransitionService(ctx.db, ctx.boardService);
-      const blocker = ctx.taskService.addTask({ title: "Alt, aber kuerzlich verschoben", columnId: "in-progress" });
-      ctx.taskService.addTask({ title: "B", columnId: "in-progress" });
-      ctx.taskService.addTask({ title: "C", columnId: "in-progress" });
+      const blocker = placeTaskInColumn(ctx, "Alt, aber kuerzlich verschoben", "in-progress");
+      placeTaskInColumn(ctx, "B", "in-progress");
+      placeTaskInColumn(ctx, "C", "in-progress");
 
       // updated_at sieht uralt aus (30 Tage) ...
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -361,13 +393,13 @@ describe("TransitionService", () => {
     test("log() speichert eine Transition, history() liest sie zurueck", () => {
       ctx = createTestBoard();
       svc = new TransitionService(ctx.db, ctx.boardService);
-      const task = ctx.taskService.addTask({ title: "Task" });
+      const taskId = insertBareTask(ctx, "Task");
 
-      svc.log(task.id, "todo", "in-progress", "backend", null, false);
+      svc.log(taskId, "todo", "in-progress", "backend", null, false);
 
-      const history = svc.history(task.id);
+      const history = svc.history(taskId);
       expect(history).toHaveLength(1);
-      expect(history[0]!.taskId).toBe(task.id);
+      expect(history[0]!.taskId).toBe(taskId);
       expect(history[0]!.fromColumn).toBe("todo");
       expect(history[0]!.toColumn).toBe("in-progress");
       expect(history[0]!.reportedBy).toBe("backend");
@@ -377,23 +409,23 @@ describe("TransitionService", () => {
     test("log() erlaubt fromColumn: null fuer die Task-Entstehung", () => {
       ctx = createTestBoard();
       svc = new TransitionService(ctx.db, ctx.boardService);
-      const task = ctx.taskService.addTask({ title: "Task" });
+      const taskId = insertBareTask(ctx, "Task");
 
-      svc.log(task.id, null, "todo", "user", null, false);
+      svc.log(taskId, null, "todo", "user", null, false);
 
-      const history = svc.history(task.id);
+      const history = svc.history(taskId);
       expect(history[0]!.fromColumn).toBeNull();
     });
 
     test("log() schreibt was_override korrekt (true und false)", () => {
       ctx = createTestBoard();
       svc = new TransitionService(ctx.db, ctx.boardService);
-      const task = ctx.taskService.addTask({ title: "Task" });
+      const taskId = insertBareTask(ctx, "Task");
 
-      svc.log(task.id, "todo", "in-progress", "user", null, false);
-      svc.log(task.id, "in-progress", "done", "user", "TUI-Override", true);
+      svc.log(taskId, "todo", "in-progress", "user", null, false);
+      svc.log(taskId, "in-progress", "done", "user", "TUI-Override", true);
 
-      const history = svc.history(task.id);
+      const history = svc.history(taskId);
       expect(history[0]!.wasOverride).toBe(false);
       expect(history[1]!.wasOverride).toBe(true);
       expect(history[1]!.reason).toBe("TUI-Override");
@@ -402,33 +434,33 @@ describe("TransitionService", () => {
     test("log() akzeptiert die dokumentierten Ausnahme-Reasons (restore, orphan-recovery, reconcile)", () => {
       ctx = createTestBoard();
       svc = new TransitionService(ctx.db, ctx.boardService);
-      const task = ctx.taskService.addTask({ title: "Task" });
+      const taskId = insertBareTask(ctx, "Task");
 
-      svc.log(task.id, null, "todo", "user", "restore", false);
-      svc.log(task.id, "todo", "done", "sync", "reconcile", false);
-      svc.log(task.id, "geloeschte-spalte", "todo", "user", "orphan-recovery", false);
+      svc.log(taskId, null, "todo", "user", "restore", false);
+      svc.log(taskId, "todo", "done", "sync", "reconcile", false);
+      svc.log(taskId, "geloeschte-spalte", "todo", "user", "orphan-recovery", false);
 
-      const reasons = svc.history(task.id).map((t) => t.reason);
+      const reasons = svc.history(taskId).map((t) => t.reason);
       expect(reasons).toEqual(["restore", "reconcile", "orphan-recovery"]);
     });
 
     test("history() liefert chronologisch aufsteigend", () => {
       ctx = createTestBoard();
       svc = new TransitionService(ctx.db, ctx.boardService);
-      const task = ctx.taskService.addTask({ title: "Task" });
+      const taskId = insertBareTask(ctx, "Task");
 
-      svc.log(task.id, "todo", "in-progress", "user", "erste", false);
-      svc.log(task.id, "in-progress", "review", "user", "zweite", false);
-      svc.log(task.id, "review", "done", "user", "dritte", false);
+      svc.log(taskId, "todo", "in-progress", "user", "erste", false);
+      svc.log(taskId, "in-progress", "review", "user", "zweite", false);
+      svc.log(taskId, "review", "done", "user", "dritte", false);
 
-      const history = svc.history(task.id);
+      const history = svc.history(taskId);
       expect(history.map((t) => t.reason)).toEqual(["erste", "zweite", "dritte"]);
     });
 
     test("history() nutzt die Insert-Reihenfolge (id) als Tie-Breaker bei gleichem Zeitstempel", () => {
       ctx = createTestBoard();
       svc = new TransitionService(ctx.db, ctx.boardService);
-      const task = ctx.taskService.addTask({ title: "Task" });
+      const taskId = insertBareTask(ctx, "Task");
       const sameInstant = new Date().toISOString();
 
       // Identischer Zeitstempel fuer alle drei Zeilen -- ohne 'id ASC' als
@@ -437,19 +469,19 @@ describe("TransitionService", () => {
         `INSERT INTO transitions (task_id, from_column, to_column, reported_by, reason, was_override, created_at)
          VALUES (?, ?, ?, ?, ?, 0, ?)`,
       );
-      insertTransition.run(task.id, "todo", "in-progress", "user", "erste", sameInstant);
-      insertTransition.run(task.id, "in-progress", "review", "user", "zweite", sameInstant);
-      insertTransition.run(task.id, "review", "done", "user", "dritte", sameInstant);
+      insertTransition.run(taskId, "todo", "in-progress", "user", "erste", sameInstant);
+      insertTransition.run(taskId, "in-progress", "review", "user", "zweite", sameInstant);
+      insertTransition.run(taskId, "review", "done", "user", "dritte", sameInstant);
 
-      const history = svc.history(task.id);
+      const history = svc.history(taskId);
       expect(history.map((t) => t.reason)).toEqual(["erste", "zweite", "dritte"]);
     });
 
     test("history() ist leer fuer einen Task ohne Historie", () => {
       ctx = createTestBoard();
       svc = new TransitionService(ctx.db, ctx.boardService);
-      const task = ctx.taskService.addTask({ title: "Task" });
-      expect(svc.history(task.id)).toEqual([]);
+      const taskId = insertBareTask(ctx, "Task");
+      expect(svc.history(taskId)).toEqual([]);
     });
   });
 });

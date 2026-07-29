@@ -3,9 +3,19 @@ import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { nanoid } from "nanoid";
 import type { BoardService } from "./board-service.ts";
 import { ArchiveService } from "./archive-service.ts";
-import type { AddTaskCheckedResult, AddTaskInput, ListTasksFilter, Task, TaskRow, UpdateTaskInput } from "./types.ts";
+import type {
+  AddTaskCheckedResult,
+  AddTaskInput,
+  Column,
+  ListTasksFilter,
+  MoveTaskOptions,
+  Task,
+  TaskRow,
+  UpdateTaskInput,
+} from "./types.ts";
 import { rowToTask } from "./types.ts";
 import { similarity, SIMILARITY_THRESHOLD } from "./similarity.ts";
+import type { TransitionCheck } from "./transition-service.ts";
 
 // TaskService erbt Archiv-Funktionen von ArchiveService
 export class TaskService extends ArchiveService {
@@ -16,9 +26,12 @@ export class TaskService extends ArchiveService {
     const now = new Date().toISOString();
     const columnId = input.columnId ?? "todo";
 
-    const column = this.boardService.getColumn(columnId);
-    if (!column) {
-      throw new Error(`Spalte '${columnId}' existiert nicht`);
+    // P1-2: nur noch Eintrittsspalten (allowEntry: true) erlaubt -- ersetzt
+    // die reine Existenzpruefung, deckt sie aber mit ab (canEnter lehnt auch
+    // unbekannte Spalten ab, siehe transition-service.ts).
+    const entryCheck = this.transitionService.canEnter(columnId);
+    if (!entryCheck.allowed) {
+      throw new Error(entryCheck.reason);
     }
 
     // Position: ans Ende der Zielspalte
@@ -57,6 +70,10 @@ export class TaskService extends ArchiveService {
     if (input.notes) {
       this.notesService.save(id, input.notes);
     }
+
+    // Entstehung protokollieren: from_column = NULL markiert den Task-Ursprung
+    // (siehe rowToTransition / Plan Abschnitt 2.1).
+    this.transitionService.log(id, null, columnId, input.createdBy ?? "user", null, false);
 
     return this.getTask(id)!;
   }
@@ -153,15 +170,60 @@ export class TaskService extends ArchiveService {
     });
   }
 
-  // Task in andere Spalte verschieben
-  moveTask(id: string, columnId: string): Task {
+  // Task in andere Spalte verschieben (P1-2). opts.override umgeht Kettenregel
+  // UND WIP-Limit UND die Dependency-Regel vollstaendig -- nur fuer den
+  // TUI-Bestaetigungsdialog (ADR 0002), markiert die Transition mit
+  // was_override = 1. opts.wipPolicy: "log" laesst NUR einen WIP-Verstoss
+  // durch (ebenfalls als Override protokolliert, reason "wip-exceeded
+  // (sync)") -- die Kettenregel bleibt dabei hart. Fuer den kommenden Sync
+  // (P1-7), der TodoWrite nicht ablehnen kann, weil der Hook erst laeuft,
+  // nachdem der Agent den Zustand schon gesetzt hat.
+  moveTask(id: string, columnId: string, opts?: MoveTaskOptions): Task {
     const task = this.getTask(id);
     if (!task) throw new Error(`Task '${id}' nicht gefunden`);
 
     const column = this.boardService.getColumn(columnId);
     if (!column) throw new Error(`Spalte '${columnId}' existiert nicht`);
 
-    // Position am Ende der Zielspalte
+    const wipPolicy = opts?.wipPolicy ?? "reject";
+    let wasOverride = opts?.override ?? false;
+    let reason = opts?.reason ?? null;
+
+    if (!opts?.override) {
+      const check = this.transitionService.canMove(task, columnId);
+      if (!check.allowed) {
+        if (check.violation === "wip" && wipPolicy === "log") {
+          wasOverride = true;
+          reason = reason ?? "wip-exceeded (sync)";
+        } else {
+          throw new Error(check.reason);
+        }
+      }
+
+      const blockCheck = this.canMoveWhileBlocked(task, column);
+      if (!blockCheck.allowed) {
+        throw new Error(blockCheck.reason);
+      }
+    }
+
+    return this.applyMove(task, columnId, {
+      reportedBy: opts?.reportedBy ?? "user",
+      reason,
+      wasOverride,
+    });
+  }
+
+  // Spaltenwechsel ausfuehren + Transition protokollieren -- geteilt zwischen
+  // moveTask (prueft vorher canMove/canMoveWhileBlocked) und completeTask
+  // (prueft vorher canComplete/canMoveWhileBlocked). completeTask ruft NICHT
+  // das oeffentliche moveTask() auf, sonst wuerde canMove ein zweites Mal
+  // pruefen -- mit einer fuer completeTask falschen Frage (WIP der
+  // Terminal-Spalte statt "steht der Task vor Terminal").
+  private applyMove(
+    task: Task,
+    columnId: string,
+    log: { reportedBy: string; reason: string | null; wasOverride: boolean },
+  ): Task {
     const maxPos = this.db
       .query("SELECT COALESCE(MAX(position), -1) as max_pos FROM tasks WHERE column_id = ? AND archived = 0")
       .get(columnId) as { max_pos: number };
@@ -173,7 +235,49 @@ export class TaskService extends ArchiveService {
       [columnId, newPosition, now, task.id],
     );
 
+    this.transitionService.log(task.id, task.columnId, columnId, log.reportedBy, log.reason, log.wasOverride);
+
     return this.getTask(task.id)!;
+  }
+
+  // Dependency-Regel (P1-2, Teamlead-Vorgabe): ein blockierter Task darf
+  // geplant, aber nicht bearbeitet werden. Solange isBlocked gilt, wird ein
+  // Vorwaerts-Move in eine Spalte mit allowEntry: false abgelehnt. Rueckwaerts
+  // bleibt immer erlaubt, ebenso Moves zwischen Eintrittsspalten -- an
+  // 'allowEntry' festgemacht statt an einem Spaltennamen, damit die Regel wie
+  // die Kettenregel aus config.json ableitbar bleibt statt hartkodiert zu
+  // sein. Lebt hier (nicht in TransitionService), weil TransitionService
+  // bewusst nichts von Dependencies weiss -- siehe P1-1.
+  private canMoveWhileBlocked(task: Task, targetColumn: Column): TransitionCheck {
+    if (!task.isBlocked) return { allowed: true };
+
+    const columns = this.boardService.getColumns();
+    const sourceIndex = columns.findIndex((c) => c.id === task.columnId);
+    const targetIndex = columns.findIndex((c) => c.id === targetColumn.id);
+    const isForward = sourceIndex !== -1 && targetIndex > sourceIndex;
+
+    if (!isForward || targetColumn.allowEntry) {
+      return { allowed: true };
+    }
+
+    const terminal = this.boardService.getTerminalColumn();
+    const openDeps = this.getDependencies(task.id).filter(
+      (d) => !d.archived && d.columnId !== terminal?.id,
+    );
+    const lines = openDeps.map((d) => {
+      const col = this.boardService.getColumn(d.columnId);
+      return `  [${d.id.slice(0, 8)}] "${d.title}"   ${col?.name ?? d.columnId}`;
+    });
+
+    return {
+      allowed: false,
+      reason:
+        `Verschieben abgelehnt: "${task.title}" wartet auf ${openDeps.length} offene ` +
+        `${openDeps.length === 1 ? "Abhaengigkeit" : "Abhaengigkeiten"}.\n\n` +
+        `${lines.join("\n")}\n\n` +
+        `Erledige diese zuerst, oder loese die Abhaengigkeit mit\n` +
+        `kanban_remove_dependency.`,
+    };
   }
 
   // Task innerhalb der Spalte verschieben (hoch/runter)
@@ -240,11 +344,28 @@ export class TaskService extends ArchiveService {
     return true;
   }
 
-  // Task als erledigt markieren
+  // Task als erledigt markieren (P1-2). Prueft canComplete (Position: direkt
+  // vor der Terminal-Spalte) und die Dependency-Regel, bewegt dann direkt
+  // ueber applyMove -- NICHT ueber das oeffentliche moveTask(), das wuerde
+  // canMove ein zweites Mal pruefen (siehe applyMove-Kommentar).
   completeTask(id: string): Task {
+    const task = this.getTask(id);
+    if (!task) throw new Error(`Task '${id}' nicht gefunden`);
+
     const terminal = this.boardService.getTerminalColumn();
     if (!terminal) throw new Error("Keine Terminal-Spalte konfiguriert");
-    return this.moveTask(id, terminal.id);
+
+    const check = this.transitionService.canComplete(task);
+    if (!check.allowed) {
+      throw new Error(check.reason);
+    }
+
+    const blockCheck = this.canMoveWhileBlocked(task, terminal);
+    if (!blockCheck.allowed) {
+      throw new Error(blockCheck.reason);
+    }
+
+    return this.applyMove(task, terminal.id, { reportedBy: "user", reason: null, wasOverride: false });
   }
 
   // Abhaengigkeiten: Tasks die diesen Task blockieren

@@ -4,13 +4,22 @@ import type { BoardService } from "./board-service.ts";
 import type { NotesService } from "./notes-service.ts";
 import type { Task, TaskRow } from "./types.ts";
 import { rowToTask } from "./types.ts";
+import { TransitionService } from "./transition-service.ts";
 
 export class ArchiveService {
+  // TransitionService wird intern gebaut statt injiziert (P1-2): er braucht
+  // nur db/boardService, die hier schon vorhanden sind. Damit bleibt die
+  // Konstruktor-Signatur unveraendert und alle bestehenden Aufrufstellen
+  // (TUI, MCP, CLI, Sync, Skripte) funktionieren ohne Anpassung weiter.
+  protected transitionService: TransitionService;
+
   constructor(
     protected db: Database,
     protected boardService: BoardService,
     protected notesService: NotesService,
-  ) {}
+  ) {
+    this.transitionService = new TransitionService(db, boardService);
+  }
 
   // Tasks archivieren (aus Terminal-Spalte oder nach Kriterien)
   archiveTasks(options?: {
@@ -104,6 +113,11 @@ export class ArchiveService {
       "UPDATE tasks SET archived = 0, column_id = ?, updated_at = ?, version = version + 1 WHERE id = ?",
       [columnId, now, task.id],
     );
+
+    // Keine Regelpruefung (P1-1-Ausnahmetabelle): ein archivierter Task hat
+    // keinen sinnvollen Kettenzustand. 'task.columnId' ist hier noch die
+    // Spalte VOR der Wiederherstellung (Zeile oben las die Row vor dem UPDATE).
+    this.transitionService.log(task.id, task.columnId, columnId, "user", "restore", false);
 
     const updated = this.db
       .query("SELECT * FROM tasks WHERE id = ?")

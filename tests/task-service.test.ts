@@ -1,6 +1,6 @@
 // Tests fuer TaskService — CRUD, Verschieben, Duplikat-Erkennung
 import { test, expect, describe, afterEach } from "bun:test";
-import { createTestBoard, type TestContext } from "./helpers.ts";
+import { createTestBoard, addTaskInColumn, type TestContext } from "./helpers.ts";
 
 describe("TaskService", () => {
   let ctx: TestContext;
@@ -19,17 +19,20 @@ describe("TaskService", () => {
     });
 
     test("respektiert optionale Felder", () => {
+      // P1-2: addTask erlaubt nur noch Eintrittsspalten -- "backlog" statt
+      // "in-progress" als Beleg dafuer, dass columnId trotzdem respektiert
+      // wird (nicht immer der Default "todo" gewinnt).
       ctx = createTestBoard();
       const task = ctx.taskService.addTask({
         title: "Task",
         description: "Beschreibung",
-        columnId: "in-progress",
+        columnId: "backlog",
         createdBy: "claude",
         assignedTo: "jopa",
         labels: ["bug", "urgent"],
       });
       expect(task.description).toBe("Beschreibung");
-      expect(task.columnId).toBe("in-progress");
+      expect(task.columnId).toBe("backlog");
       expect(task.createdBy).toBe("claude");
       expect(task.assignedTo).toBe("jopa");
       expect(task.labels).toEqual(["bug", "urgent"]);
@@ -73,9 +76,13 @@ describe("TaskService", () => {
     });
 
     test("filtert nach Spalte", () => {
+      // P1-2: addTask erlaubt nur noch Eintrittsspalten -- B entsteht in Todo
+      // und wird von dort legitim (Kettenregel: 1 Schritt vorwaerts) nach
+      // In Progress verschoben, statt direkt dort zu entstehen.
       ctx = createTestBoard();
       ctx.taskService.addTask({ title: "A", columnId: "todo" });
-      ctx.taskService.addTask({ title: "B", columnId: "in-progress" });
+      const b = ctx.taskService.addTask({ title: "B" });
+      ctx.taskService.moveTask(b.id, "in-progress");
       const todos = ctx.taskService.listTasks({ columnId: "todo" });
       expect(todos).toHaveLength(1);
       expect(todos[0]!.title).toBe("A");
@@ -90,8 +97,11 @@ describe("TaskService", () => {
     });
 
     test("schliesst archivierte Tasks standardmaessig aus", () => {
+      // P1-2: addTask erlaubt nur noch Eintrittsspalten -- der Task muss fuer
+      // diesen Test in Done stehen (archiveTasks() archiviert ohne Optionen
+      // per Default aus der Terminal-Spalte), deshalb per Fixture-Helper.
       ctx = createTestBoard();
-      ctx.taskService.addTask({ title: "Active", columnId: "done" });
+      addTaskInColumn(ctx, "Active", "done");
       ctx.taskService.archiveTasks();
       expect(ctx.taskService.listTasks()).toHaveLength(0);
     });
@@ -164,9 +174,17 @@ describe("TaskService", () => {
   });
 
   describe("completeTask", () => {
-    test("verschiebt Task in Done-Spalte", () => {
+    // P1-2 (Breaking Change): completeTask verlangt jetzt, dass der Task in
+    // der Spalte direkt vor der Terminal-Spalte steht (Default: Review) --
+    // ein frisch angelegter Task in Todo kann nicht mehr direkt abschliessen.
+    // Der frueher hier getestete Kurzschluss war die alte, unerzwungene
+    // Regel; die vollstaendige Negativ-Probe (Ablehnung aus In Progress)
+    // steht in tests/task-service-transitions.test.ts.
+    test("verschiebt Task aus Review in Done-Spalte", () => {
       ctx = createTestBoard();
       const task = ctx.taskService.addTask({ title: "Finish" });
+      ctx.taskService.moveTask(task.id, "in-progress");
+      ctx.taskService.moveTask(task.id, "review");
       const done = ctx.taskService.completeTask(task.id);
       expect(done.columnId).toBe("done");
     });
@@ -221,10 +239,14 @@ describe("TaskService", () => {
     });
 
     test("isBlocked: true solange Abhaengigkeit offen, false nach Abschluss", () => {
+      // P1-2: completeTask verlangt jetzt Review als Vorspalte -- 'a' muss
+      // erst dorthin bewegt werden, bevor es abgeschlossen werden kann.
       ctx = createTestBoard();
       const a = ctx.taskService.addTask({ title: "A" });
       const b = ctx.taskService.addTask({ title: "B", dependsOn: [a.id] });
       expect(ctx.taskService.isBlocked(b.id)).toBe(true);
+      ctx.taskService.moveTask(a.id, "in-progress");
+      ctx.taskService.moveTask(a.id, "review");
       ctx.taskService.completeTask(a.id);
       expect(ctx.taskService.isBlocked(b.id)).toBe(false);
     });

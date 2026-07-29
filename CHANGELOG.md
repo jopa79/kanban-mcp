@@ -110,8 +110,8 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   - `hasNotes` Flag bei `listTasks` (Performance: kein Datei-Inhalt laden)
 - `TransitionService` (`src/core/transition-service.ts`, P1-1) — Zustandsmaschine
   fuer Spaltenuebergaenge: Regeln pruefen, Pfade berechnen, Transitions
-  protokollieren. Eigenstaendig und getestet, **noch nicht** an `TaskService`
-  angebunden (`addTask`/`moveTask`/`completeTask` folgen in P1-2)
+  protokollieren. Seit P1-2 an `TaskService` angebunden (siehe eigener
+  Eintrag unten) — hier zunaechst eigenstaendig gebaut und getestet
   - Kettenregel `zielIndex <= quellIndex + 1` wird aus dem Array-Index von
     `boardService.getColumns()` abgeleitet, nicht aus einer hartkodierten
     Matrix — Rueckspruenge beliebiger Weite und `zielIndex == quellIndex`
@@ -134,9 +134,46 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
     wuerde jeder `kanban done` automatisch durch Review durchlaufen
   - `log()`/`history()` schreiben bzw. lesen die `transitions`-Tabelle
     (inkl. `was_override`)
-  - 30 neue Tests (`tests/transition-service.test.ts`) — u.a. belegen Boards
+  - 31 neue Tests (`tests/transition-service.test.ts`) — u.a. belegen Boards
     mit 3 und 7 Spalten sowie eine umsortierte `config.json`, dass die Regel
     wirklich abgeleitet und nicht hartkodiert ist
+- `TaskService` durchgesetzte Zustandsmaschine (P1-2, siehe Breaking Changes
+  unter Changed) — `addTask`/`moveTask`/`completeTask` laufen jetzt durch
+  `TransitionService`, jeder Uebergang wird in `transitions` protokolliert
+  - `moveTask(id, columnId, opts?)` — neue optionale `opts`:
+    `reportedBy`, `reason`, `override` (umgeht Kettenregel, WIP-Limit UND die
+    Dependency-Regel vollstaendig, markiert `was_override = 1`; nur fuer den
+    kommenden TUI-Bestaetigungsdialog, P1-5) und `wipPolicy: "reject" | "log"`
+    (Default `"reject"`; `"log"` laesst NUR einen WIP-Verstoss durch und
+    protokolliert ihn als Override mit `reason: "wip-exceeded (sync)"` — die
+    Kettenregel bleibt dabei hart. Fuer den kommenden Sync, P1-7, der
+    TodoWrite nicht ablehnen kann, weil der Hook erst laeuft, nachdem der
+    Agent den Zustand schon gesetzt hat)
+  - Neue Dependency-Regel (Teamlead-Entscheidung, ergaenzt die urspruengliche
+    P1-2-Spezifikation): ein blockierter Task (`isBlocked`) darf geplant,
+    aber nicht bearbeitet werden — ein Vorwaerts-Move in eine Spalte mit
+    `allowEntry: false` wird abgelehnt, solange offene Abhaengigkeiten
+    bestehen. Rueckwaerts und Moves zwischen Eintrittsspalten bleiben immer
+    erlaubt. An `allowEntry` festgemacht statt an einem Spaltennamen, damit
+    die Regel wie die Kettenregel aus `config.json` ableitbar bleibt. Der
+    Ablehnungstext nennt die offenen Abhaengigkeiten namentlich (ID-Praefix,
+    Titel, aktuelle Spalte). Lebt in `TaskService`, nicht in
+    `TransitionService`, der bewusst nichts von Abhaengigkeiten weiss
+  - `completeTask` prueft zusaetzlich dieselbe Dependency-Regel gegen die
+    Terminal-Spalte — ein blockierter Task kann nicht abgeschlossen werden,
+    auch wenn er bereits in Review steht
+  - `restoreTask` (`ArchiveService`) protokolliert die Wiederherstellung mit
+    `reason: "restore"`, ohne Regelpruefung (Ausnahmetabelle aus P1-1) — ein
+    archivierter Task hat keinen sinnvollen Kettenzustand
+  - `TransitionCheck` (transition-service.ts) bekommt ein neues optionales
+    Feld `violation?: "chain" | "wip"`, damit `moveTask` bei `wipPolicy:
+    "log"` gezielt nur WIP-Ablehnungen umleiten kann, ohne die Kettenregel
+    anzufassen — additive Erweiterung, keine bestehenden Aufrufer betroffen
+  - `TaskService`/`ArchiveService` bauen `TransitionService` intern selbst
+    (Konstruktor-Signatur unveraendert: `db`, `boardService`, `notesService`)
+    — alle bestehenden Konstruktionsstellen (TUI, MCP, CLI, Sync, Skripte)
+    funktionieren ohne Anpassung weiter
+  - 24 neue Tests (`tests/task-service-transitions.test.ts`)
 
 ### Removed
 
@@ -152,6 +189,19 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Changed
 
+- **Breaking (P1-2):** `TaskService.addTask` akzeptiert nur noch Spalten mit
+  `allowEntry: true` (Default-Board: `backlog`, `todo`) — `addTask({columnId:
+  "in-progress"})` etc. wirft jetzt einen Fehler statt zu erstellen
+- **Breaking (P1-2):** `TaskService.moveTask` und `completeTask` koennen
+  ablehnen. `kanban done`/`kanban_complete_task` scheitert, wenn der Task
+  nicht in der Spalte direkt vor der Terminal-Spalte steht (Default: Review);
+  `moveTask` scheitert bei Kettenverstoss (mehr als ein Schritt vorwaerts),
+  vollem WIP-Limit der Zielspalte oder — neu — wenn der Task blockiert ist
+  und vorwaerts in eine Arbeitsspalte soll (siehe Added). Betroffene
+  bestehende Aufrufer, noch nicht angepasst (folgt in eigenen Tasks):
+  `src/tui/app.tsx` (`n`/`d`/Verschiebe-Modus — Override-Dialog folgt in
+  P1-5), `src/cli/commands/add.ts` `-c in-progress`-Beispiel im README,
+  `scripts/seed-demo.ts` (legt Tasks z.T. direkt in mittleren Spalten an)
 - `BoardService` liest Spalten jetzt aus `config.json` statt per SQL aus der
   `columns`-Tabelle (`getColumns`, `getColumn`, `getTerminalColumn`); die
   `columns`-Tabelle entfaellt, `tasks.column_id` hat keinen Fremdschluessel

@@ -74,6 +74,20 @@ export interface UpdateTaskInput {
   notes?: string | null;
 }
 
+// Optionen fuer TaskService.moveTask (P1-2).
+// - 'override': umgeht Kettenregel UND WIP-Limit vollstaendig (nur TUI, siehe
+//   ADR 0002) und markiert die Transition mit was_override = 1.
+// - 'wipPolicy: "log"': fuer den kommenden Sync (P1-7) -- ein WIP-Verstoss
+//   wird protokolliert (was_override = 1, Default-reason "wip-exceeded
+//   (sync)") statt abgelehnt. Die Kettenregel bleibt dabei hart, TodoWrite
+//   ist nicht ablehnbar, aber auch nicht befugt, die Kette zu brechen.
+export interface MoveTaskOptions {
+  reportedBy?: string;
+  reason?: string | null;
+  override?: boolean;
+  wipPolicy?: "reject" | "log";
+}
+
 export interface ListTasksFilter {
   columnId?: string;
   createdBy?: string;
