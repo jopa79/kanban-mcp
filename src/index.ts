@@ -18,6 +18,7 @@ import { getCommand } from "./cli/commands/get.ts";
 import { noteCommand } from "./cli/commands/note.ts";
 import { exportCommand } from "./cli/commands/export.ts";
 import { importCommand } from "./cli/commands/import.ts";
+import { boardsCommand } from "./cli/commands/boards.ts";
 
 const program = new Command();
 
@@ -46,5 +47,6 @@ program.addCommand(restoreCommand);
 program.addCommand(purgeCommand);
 program.addCommand(exportCommand);
 program.addCommand(importCommand);
+program.addCommand(boardsCommand);
 
 program.parse();

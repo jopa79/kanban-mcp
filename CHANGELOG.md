@@ -68,8 +68,24 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   - **Bewusst getrennt**: `initBoard()` selbst registriert nie — sonst waere
     die Registry nach jedem Testlauf (`tests/helpers.ts`) voller temporaerer
     Pfade
-  - Noch offen (folgt nach P0-1/`BoardConfig`): `kanban boards`-Kommando,
-    Schema-v2-Erkennung, Task-Zahlen pro Board
+  - `kanban boards` — aggregierte Uebersicht aller registrierten Boards
+    (Name, Pfad, Task-Zahl); `boards add [pfad]` traegt ein bestehendes Board
+    nachtraeglich ein (Name aus `config.json`, sonst Verzeichnisname als
+    Fallback), `boards remove <pfad>` entfernt einen Eintrag; `--json` fuer
+    maschinelle Auswertung
+    - Jedes Board wird einzeln abgefangen, nicht die gesamte Liste in einem
+      `try/catch` — ein kaputtes Board zeigt eine Warnzeile (fehlender Pfad,
+      kaputte `config.json`, veraltetes Schema, gesperrte Datenbank) statt die
+      Uebersicht der anderen Boards mitzureissen
+      (`src/cli/board-overview.ts`)
+    - Erkennt ein veraltetes Schema (z.B. v2) am Fehlschlag des bestehenden
+      Schema-Guards (`assertSchemaCurrent`) und zeigt `Schema vN — 'kanban
+      migrate' noetig` statt abzustuerzen oder die Pruefung zu umgehen
+    - Frischt den `name`-Cache aus der jeweiligen `config.json` auf und
+      schreibt ihn nur zurueck, wenn er wirklich abweicht
+    - Reine Lesezugriffe: jede Board-DB wird nur fuer die Dauer der Pruefung
+      geoeffnet und sofort wieder geschlossen, keine parallel offenen
+      Verbindungen ueber Board-Grenzen hinweg
 - MCP: Task-Abhaengigkeiten vollstaendig ueber MCP nutzbar (vorher nur bei Erstellung setzbar)
   - `kanban_add_dependency` — Task nachtraeglich von einem anderen abhaengig machen
   - `kanban_remove_dependency` — bestehende Abhaengigkeit aufheben (loest gekuerzte IDs auf)

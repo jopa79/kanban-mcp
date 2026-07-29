@@ -1,5 +1,6 @@
 // Terminal-Ausgabe Formatierung mit Farben
 import type { Task, TaskPriority } from "../core/types.ts";
+import type { BoardOverviewEntry, BoardOverviewStatus } from "./board-overview.ts";
 
 // ANSI Farb-Codes
 const COLORS = {
@@ -133,6 +134,48 @@ export function formatStatus(
   }
 
   return lines.join("\n");
+}
+
+// Registrierte Boards als Tabelle ('kanban boards', P3-1 zweite Haelfte).
+// Zeigt gerade dann etwas Sinnvolles an, wenn ein Board kaputt ist -- eine
+// leere Zeile oder ein Absturz waere hier das falsche Verhalten (Task-Notiz).
+export function formatBoardsList(entries: BoardOverviewEntry[]): string {
+  if (entries.length === 0) {
+    return `${COLORS.dim}Keine Boards registriert. 'kanban boards add [pfad]' um eines hinzuzufuegen.${COLORS.reset}`;
+  }
+
+  const nameWidth = Math.max(4, ...entries.map((e) => e.name.length));
+  const pathWidth = Math.max(4, ...entries.map((e) => e.path.length));
+
+  const lines: string[] = [
+    `${COLORS.bold}Registrierte Boards${COLORS.reset} ${COLORS.dim}(${entries.length})${COLORS.reset}`,
+    "",
+  ];
+
+  for (const entry of entries) {
+    const name = `${COLORS.bold}${entry.name.padEnd(nameWidth)}${COLORS.reset}`;
+    const path = `${COLORS.dim}${entry.path.padEnd(pathWidth)}${COLORS.reset}`;
+    lines.push(`  ${name} ${path} ${formatBoardStatus(entry.status)}`);
+  }
+
+  return lines.join("\n");
+}
+
+// Statuszeile je Board: Task-Zahl im Normalfall, sonst eine Warnung statt
+// Absturz. 'missing'/'schema-outdated' in Gelb (Aufmerksamkeit noetig, aber
+// kein hartes Scheitern), generische Fehler (kaputte config.json, gesperrte
+// DB) in Rot -- dieselbe Farblogik wie formatPriorityMarker.
+function formatBoardStatus(status: BoardOverviewStatus): string {
+  if (status.kind === "ok") {
+    return `${COLORS.dim}${status.taskCount.toString().padStart(3)} Tasks${COLORS.reset}`;
+  }
+  if (status.kind === "missing") {
+    return `${COLORS.yellow}⚠ Pfad existiert nicht mehr${COLORS.reset}`;
+  }
+  if (status.kind === "schema-outdated") {
+    return `${COLORS.yellow}⚠ Schema v${status.version} -- 'kanban migrate' noetig${COLORS.reset}`;
+  }
+  return `${COLORS.red}⚠ ${status.message}${COLORS.reset}`;
 }
 
 // Erfolgsmeldung
