@@ -65,6 +65,13 @@ describe("DetailView — Faelligkeit", () => {
     expect(text.toLowerCase()).toContain("ueberfaellig");
   });
 
+  test("Ueberfaellig-Markierung nutzt das Warnzeichen (ADR 0004), nicht nur Klartext", () => {
+    // Ausserhalb der Karte gilt das aussagekraeftigere Symbol '⚠' statt des
+    // ASCII-Markers '[!]' -- siehe docs/decisions/0004-marker-auf-karten.md.
+    const text = renderDetail(makeTask({ dueDate: "2020-01-01", isOverdue: true }));
+    expect(text).toContain("⚠ ueberfaellig");
+  });
+
   test("Done-Task mit vergangenem Datum aber isOverdue: false zeigt KEINE Ueberfaellig-Markierung", () => {
     // isOverdue wird vom TaskService berechnet (terminal-Spalten sind nie
     // ueberfaellig) -- die TUI verlaesst sich rein auf das Flag, rechnet

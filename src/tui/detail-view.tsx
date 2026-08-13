@@ -31,7 +31,7 @@ export function DetailView({ task }: DetailViewProps) {
         {/* isOverdue kommt fertig berechnet vom TaskService (terminal-Spalten
             sind nie ueberfaellig, siehe TaskService.isOverdue) -- hier nur
             angezeigt, nicht nachgerechnet. */}
-        {task.isOverdue && <Text color={ACCENT.overdue} bold> (ueberfaellig)</Text>}
+        {task.isOverdue && <Text color={ACCENT.overdue} bold> ⚠ ueberfaellig</Text>}
       </Box>
       {task.isBlocked && <Text color="#ef4444" bold>BLOCKIERT</Text>}
       <Text color={ACCENT.muted}>Erstellt: {task.createdBy} @ {task.createdAt}</Text>

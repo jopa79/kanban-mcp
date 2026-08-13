@@ -19,6 +19,12 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Fixed
 
+- TUI-Detailansicht zeigte fuer ueberfaellige Tasks nur reinen Klartext
+  (`(ueberfaellig)`), ohne Symbol — CLI und TUI-Waisenspalte markieren
+  denselben Zustand mit `⚠`. `src/tui/detail-view.tsx` zeigt jetzt
+  `⚠ ueberfaellig`, wortgleich mit `formatTaskDetail` in der CLI. Die Karte
+  behaelt bewusst `[!]` (ASCII, feste Breite) — siehe
+  [ADR 0004](docs/decisions/0004-marker-auf-karten.md).
 - `scripts/seed-demo.ts` lief seit P1-2 (0.2.0) nicht mehr durch — das Skript
   legte Tasks per `addTask({ columnId: "in-progress" | "review" | "done" })`
   an, seit P1-2 sind das keine Eintrittsspalten mehr (siehe 0.2.0/Changed).
