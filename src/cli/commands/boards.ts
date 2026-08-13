@@ -3,18 +3,8 @@ import { Command } from "commander";
 import { basename, resolve } from "node:path";
 import { RegistryService } from "../../core/registry-service.ts";
 import { boardExists, getBoardPaths, loadBoardConfig } from "../../core/db.ts";
-import { readBoardOverview, type BoardOverviewEntry } from "../board-overview.ts";
-import { defaultRegistryDir } from "./init.ts";
+import { runBoardsList, defaultRegistryDir, type BoardOverviewEntry } from "../board-overview.ts";
 import { formatBoardsList, success, error } from "../formatters.ts";
-
-// Testbarer Kern von 'kanban boards': registryDir immer explizit, wie
-// runInit() in init.ts -- Tests laufen so gegen ein Temp-Verzeichnis, nie
-// gegen die echte Registry. Ein try/catch um die Schleife waere hier falsch
-// (siehe readBoardOverview) -- jedes Board faengt seinen eigenen Fehler ab.
-export function runBoardsList(registryDir: string): BoardOverviewEntry[] {
-  const registry = new RegistryService(registryDir);
-  return registry.list().map((entry) => readBoardOverview(entry, registry));
-}
 
 // Registriert ein Board nachtraeglich (z.B. mit --no-register angelegt, oder
 // von einem anderen Rechner uebernommen). Braucht -- anders als 'kanban

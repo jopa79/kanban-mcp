@@ -8,8 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RegistryService } from "../src/core/registry-service.ts";
 import { getBoardPaths } from "../src/core/db.ts";
-import { defaultRegistryDir } from "../src/cli/commands/init.ts";
-import { runBoardsList, runBoardsAdd, runBoardsRemove } from "../src/cli/commands/boards.ts";
+import { runBoardsList, defaultRegistryDir } from "../src/cli/board-overview.ts";
+import { runBoardsAdd, runBoardsRemove } from "../src/cli/commands/boards.ts";
 import { createTestBoard, addTaskInColumn, createLegacyV2Board } from "./helpers.ts";
 
 function freshDir(prefix: string): string {
