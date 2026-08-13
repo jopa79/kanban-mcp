@@ -1,5 +1,5 @@
 // Custom Hook: Board-Daten laden und Task-Aktionen ausfuehren
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { watch, type FSWatcher } from "node:fs";
 import type { Column, ListTasksFilter, Task, UpdateTaskInput } from "../core/types.ts";
 import { openDb, getBoardPaths, loadBoardConfig } from "../core/db.ts";
@@ -106,6 +106,44 @@ function withServices<T>(workingDir: string, action: (ts: TaskService) => T): T 
   return result;
 }
 
+// Beobachtet ein Board-Verzeichnis und meldet fremde Aenderungen (MCP-Agent,
+// zweite CLI, zweite TUI). Liefert die Abmelde-Funktion zurueck.
+//
+// Beobachtet wird das VERZEICHNIS, nicht `board.db`. Gemessen (GitHub #43):
+// Ein fremder Prozess schreibt in den WAL und laesst `board.db` unberuehrt --
+// mtime und size bleiben identisch, und ein `fs.watch` auf die Datei feuert
+// deshalb nie. Auch `fs.watchFile` (Polling auf stat) sieht so einen
+// Schreibvorgang nicht. Das Verzeichnis-Watch sieht ihn zuverlaessig, weil dort
+// `board.db-wal` auftaucht und sich aendert. Die Datei wird dabei nicht ersetzt
+// (Inode unveraendert) -- der alte Watcher war nicht kaputt, er sah nur an der
+// falschen Stelle nach.
+//
+// Exportiert, damit der Regressionstest einen echten fremden Schreibvorgang
+// gegen die echte Beobachtungslogik pruefen kann statt gegen einen Nachbau.
+export function watchBoardChanges(
+  kanbanDir: string,
+  onChange: () => void,
+  debounceMs = 50,
+): () => void {
+  let watcher: FSWatcher;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    watcher = watch(kanbanDir, (_type, filename) => {
+      // config.json und notes/ loesen keinen Board-Reload aus.
+      if (filename && !filename.startsWith("board.db")) return;
+      // Ein Schreibvorgang erzeugt ein bis zwei Ereignisse (DB und WAL) --
+      // entprellen statt zaehlen, sonst laedt ein einzelner Move doppelt neu.
+      clearTimeout(timer);
+      timer = setTimeout(onChange, debounceMs);
+    });
+  } catch {
+    // Kein Watch moeglich (Verzeichnis weg, Limit erreicht): die TUI laeuft
+    // weiter, nur ohne Auto-Refresh -- 'r' aktualisiert weiterhin von Hand.
+    return () => {};
+  }
+  return () => { clearTimeout(timer); watcher.close(); };
+}
+
 // 'sort' (P2-3): optionaler Ansichtsmodus, vom Aufrufer (app.tsx) ueber
 // resolveEffectiveSort() berechnet -- dieser Hook entscheidet nicht selbst,
 // ob sortiert werden darf (kennt 'moving' nicht), reicht den Wert nur durch.
@@ -137,24 +175,22 @@ export function useBoard(workingDir: string, sort?: ListTasksFilter["sort"]) {
     [columns, orphanColumnIds],
   );
 
-  // Auto-Refresh: DB-Datei ueberwachen fuer externe Aenderungen (z.B. MCP)
-  const selfWrite = useRef(false);
   useEffect(() => {
     const paths = getBoardPaths(workingDir);
-    let watcher: FSWatcher;
-    try {
-      watcher = watch(paths.dbPath, () => {
-        // Eigene Schreibvorgaenge ignorieren
-        if (selfWrite.current) { selfWrite.current = false; return; }
-        refresh();
-      });
-    } catch { return; }
-    return () => { watcher.close(); };
+    return watchBoardChanges(paths.kanbanDir, refresh);
   }, [workingDir, refresh]);
 
-  // Eigene DB-Schreibvorgaenge: selfWrite-Flag setzen damit Watcher nicht doppelt refresht
+  // Eigene DB-Schreibvorgaenge.
+  //
+  // Frueher stand hier ein 'selfWrite'-Flag, das das naechste Watch-Ereignis
+  // unterdruecken sollte. Es ist bewusst entfallen: Ein einzelnes Boolean kann
+  // die 1:n-Beziehung zwischen einem Schreibvorgang und den Ereignissen, die er
+  // ausloest, nicht abbilden -- bleibt es gesetzt, verschluckt es die naechste
+  // FREMDE Aenderung. Mit dem Verzeichnis-Watch waere das kein theoretisches
+  // Risiko mehr, sondern der Normalfall. Der ueberzaehlige Reload aus einer
+  // lokalen SQLite-Datei kostet drei setState und ist immer korrekt; die
+  // Entprellung oben faengt ihn ohnehin meist mit ab.
   const writeAndRefresh = useCallback(<T,>(action: (ts: TaskService) => T): T => {
-    selfWrite.current = true;
     const result = withServices(workingDir, action);
     refresh();
     return result;
