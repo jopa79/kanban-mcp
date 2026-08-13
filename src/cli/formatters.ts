@@ -113,6 +113,7 @@ export function formatStatus(
   columns: Array<{ column: string; columnId: string; count: number }>,
   total: number,
   orphanCount = 0,
+  transitionCount?: number,
 ): string {
   const lines: string[] = [
     `${COLORS.bold}${boardName}${COLORS.reset} ${COLORS.dim}(${total} Tasks)${COLORS.reset}`,
@@ -130,6 +131,18 @@ export function formatStatus(
   if (orphanCount > 0) {
     lines.push(
       `  ${COLORS.yellow}⚠ Ohne Spalte${COLORS.reset} ${COLORS.dim}${orphanCount.toString().padStart(3)}${COLORS.reset}`,
+    );
+  }
+
+  // Transitions-Historie (K-5, ADR 0005). Steht abgesetzt unter den Spalten,
+  // weil es keine Task-Zahl ist, sondern eine Kennzahl ueber die Historie --
+  // in der Spaltenliste wuerde man sie faelschlich mitsummieren. Sichtbar,
+  // damit unkontrolliertes Wachstum auffaellt, bevor es weh tut; gekappt wird
+  // sie in 0.2.0 bewusst nicht.
+  if (transitionCount !== undefined) {
+    lines.push(
+      "",
+      `  ${COLORS.dim}Transitions ${transitionCount.toLocaleString("de-DE")}${COLORS.reset}`,
     );
   }
 

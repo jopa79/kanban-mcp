@@ -25,6 +25,8 @@ export const statusCommand = new Command("status")
     }
 
     console.log();
-    console.log(formatStatus(config.name, status.columns, status.total, status.orphanCount));
+    console.log(
+      formatStatus(config.name, status.columns, status.total, status.orphanCount, status.transitionCount),
+    );
     console.log();
   });
