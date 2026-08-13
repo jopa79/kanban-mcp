@@ -46,5 +46,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Claude Code: temporaere Arbeitsverzeichnisse paralleler Agents
 .claude/worktrees/
 
+# Entwuerfe fuer externe Stellen (Upstream-Issues o.ae.) — sollen erst nach
+# aussen gehen, wenn JoPa sie abgeschickt hat, und nicht vorher im Repo liegen
+.claude/*-bug-report.md
+
 # devpulse
 .devpulse/
