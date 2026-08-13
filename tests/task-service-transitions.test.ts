@@ -319,4 +319,61 @@ describe("TaskService — Zustandsmaschine (P1-2)", () => {
       expect(ctx.taskService.moveTask(task.id, "in-progress").columnId).toBe("in-progress");
     });
   });
+
+  // GitHub #45: applyMove() protokollierte jeden Aufruf, auch wenn Quell- und
+  // Zielspalte identisch waren -- Eintraege der Form 'todo -> todo', die einen
+  // Zustandswechsel behaupten, der nie stattfand, und den Task zusaetzlich ans
+  // Ende der Spalte schoben.
+  describe("moveTask — No-Op in die eigene Spalte (#45)", () => {
+    test("schreibt keine Transition", () => {
+      ctx = createTestBoard();
+      const transitions = new TransitionService(ctx.db, ctx.boardService);
+      const task = ctx.taskService.addTask({ title: "A" });
+      const before = transitions.history(task.id).length;
+
+      ctx.taskService.moveTask(task.id, "todo", { reportedBy: "teamlead" });
+
+      expect(transitions.history(task.id)).toHaveLength(before);
+    });
+
+    test("laesst die Position unveraendert — die Reihenfolge bleibt stehen", () => {
+      ctx = createTestBoard();
+      const first = ctx.taskService.addTask({ title: "Erster" });
+      const second = ctx.taskService.addTask({ title: "Zweiter" });
+
+      ctx.taskService.moveTask(first.id, "todo", { reportedBy: "teamlead" });
+
+      expect(ctx.taskService.getTask(first.id)!.position).toBe(first.position);
+      expect(ctx.taskService.getTask(second.id)!.position).toBe(second.position);
+    });
+
+    test("gibt den Task zurueck, wirft nicht", () => {
+      ctx = createTestBoard();
+      const task = ctx.taskService.addTask({ title: "A" });
+
+      const result = ctx.taskService.moveTask(task.id, "todo");
+
+      expect(result.id).toBe(task.id);
+      expect(result.columnId).toBe("todo");
+    });
+
+    test("unbekannte Spalte wird weiterhin abgelehnt", () => {
+      ctx = createTestBoard();
+      const task = ctx.taskService.addTask({ title: "A" });
+      expect(() => ctx.taskService.moveTask(task.id, "gibt-es-nicht")).toThrow(/existiert nicht/);
+    });
+
+    test("echter Spaltenwechsel wird unveraendert protokolliert", () => {
+      ctx = createTestBoard();
+      const transitions = new TransitionService(ctx.db, ctx.boardService);
+      const task = ctx.taskService.addTask({ title: "A" });
+
+      ctx.taskService.moveTask(task.id, "in-progress", { reportedBy: "backend" });
+
+      const history = transitions.history(task.id);
+      expect(history).toHaveLength(2);
+      expect(history[1]!.fromColumn).toBe("todo");
+      expect(history[1]!.toColumn).toBe("in-progress");
+    });
+  });
 });
