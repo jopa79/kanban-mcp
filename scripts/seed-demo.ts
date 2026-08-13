@@ -8,6 +8,7 @@ import { initBoard, openDb, loadBoardConfig } from "../src/core/db";
 import { BoardService } from "../src/core/board-service";
 import { TaskService } from "../src/core/task-service";
 import { NotesService } from "../src/core/notes-service";
+import type { AddTaskInput, Task } from "../src/core/types";
 
 const PROJECT_DIR = join(import.meta.dir, "..");
 const kanbanPath = join(PROJECT_DIR, ".kanban");
@@ -30,6 +31,18 @@ const config = loadBoardConfig(join(kanbanDir, "config.json"));
 const boardService = new BoardService(db, config);
 const notesService = new NotesService(kanbanDir);
 const taskService = new TaskService(db, boardService, notesService);
+
+// Legt einen Task in einer beliebigen Spalte an. addTask() erlaubt seit P1-2
+// nur noch Eintrittsspalten (allowEntry: true) -- deshalb hier ueber die
+// Default-Eintrittsspalte anlegen und bei Bedarf per moveTask(..., { override:
+// true }) weiterbewegen: dieselbe oeffentliche, protokollierte Umgehung wie
+// tests/helpers.ts (addTaskInColumn), hier fuer das volle AddTaskInput.
+function addTaskInColumn(input: AddTaskInput & { columnId: string }): Task {
+  const { columnId, ...rest } = input;
+  const task = taskService.addTask(rest);
+  if (task.columnId === columnId) return task;
+  return taskService.moveTask(task.id, columnId, { override: true });
+}
 
 // --- Backlog Tasks ---
 taskService.addTask({
@@ -75,7 +88,7 @@ taskService.addTask({
 });
 
 // --- In Progress Tasks ---
-const exportTask = taskService.addTask({
+const exportTask = addTaskInColumn({
   title: "MCP Export/Import",
   description: "Board als ZIP exportieren und aus ZIP wiederherstellen",
   columnId: "in-progress",
@@ -85,7 +98,7 @@ const exportTask = taskService.addTask({
   notes: "## Status\n- [x] Export Service\n- [x] Import Service\n- [ ] MCP Tools registrieren\n- [ ] CLI Commands\n\n## Architektur\nExport erzeugt ein ZIP mit board.db + notes/.\nImport erkennt ob bereits ein Board existiert\nund fragt ggf. nach Ueberschreiben.\n\n## Offene Fragen\n- Sollen Labels beim Import gemergt werden?\n- Max. ZIP-Groesse begrenzen?",
 });
 
-taskService.addTask({
+addTaskInColumn({
   title: "CLI Hilfe-Texte",
   description: "Alle Commands dokumentieren",
   columnId: "in-progress",
@@ -94,7 +107,7 @@ taskService.addTask({
 });
 
 // --- Review Tasks ---
-taskService.addTask({
+addTaskInColumn({
   title: "TUI Filter-Funktion",
   description: "Tasks nach Titel durchsuchen",
   columnId: "review",
@@ -104,14 +117,14 @@ taskService.addTask({
 });
 
 // --- Done Tasks ---
-taskService.addTask({
+addTaskInColumn({
   title: "SQLite Setup + Migrationen",
   columnId: "done",
   labels: ["feature"],
   createdBy: "claude",
 });
 
-taskService.addTask({
+addTaskInColumn({
   title: "Board Initialisierung",
   columnId: "done",
   labels: ["feature"],

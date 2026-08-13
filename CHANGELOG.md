@@ -17,6 +17,16 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   und der TUI-Board-Wechsel greifen unveraendert auf dieselbe Logik zu, die
   TUI importiert dafuer nicht mehr aus der CLI-Command-Schicht.
 
+### Fixed
+
+- `scripts/seed-demo.ts` lief seit P1-2 (0.2.0) nicht mehr durch — das Skript
+  legte Tasks per `addTask({ columnId: "in-progress" | "review" | "done" })`
+  an, seit P1-2 sind das keine Eintrittsspalten mehr (siehe 0.2.0/Changed).
+  Betroffene Tasks entstehen jetzt ueber die Default-Eintrittsspalte und
+  werden bei Bedarf per `moveTask(id, columnId, { override: true })`
+  weiterbewegt — dieselbe oeffentliche, protokollierte Umgehung wie in
+  `tests/helpers.ts`.
+
 ## [0.2.0] - 2026-07-29
 
 > **Bestehendes Board?** Erst `kanban migrate` ausfuehren — siehe
