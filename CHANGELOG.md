@@ -7,6 +7,24 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Die TUI bekommt fremde Aenderungen jetzt mit** (GitHub #43). Schrieb ein
+  anderer Prozess an dasselbe Board — ein Agent per MCP, eine zweite CLI, eine
+  zweite TUI —, blieb die Anzeige veraltet, bis jemand `r` drueckte. Ursache
+  war die Beobachtungsstelle: `fs.watch` lag auf `board.db`, ein fremder
+  Schreibvorgang landet aber im WAL und laesst `board.db` unberuehrt (mtime und
+  size unveraendert, Inode gleich). Weder `fs.watch` noch `fs.watchFile` konnten
+  ihn dort sehen. Beobachtet wird jetzt das `.kanban`-Verzeichnis, gefiltert auf
+  `board.db*` und entprellt. Gemessen: alte Stelle 0 von 3 fremden
+  Schreibvorgaengen erkannt, neue Stelle 3 von 3.
+- Das `selfWrite`-Flag in `use-board.ts` ist entfallen. Es sollte das naechste
+  Watch-Ereignis nach einem eigenen Schreibvorgang unterdruecken, konnte die
+  1:n-Beziehung zwischen Schreibvorgang und Ereignissen aber nicht abbilden —
+  blieb es gesetzt, haette es die naechste *fremde* Aenderung verschluckt. Ein
+  ueberzaehliger Reload aus einer lokalen SQLite-Datei ist billiger als ein
+  verpasster.
+
 ### Added
 
 - **`kanban status` weist die Groesse der Transitions-Historie aus** (K-5,
