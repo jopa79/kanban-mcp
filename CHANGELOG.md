@@ -7,6 +7,15 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+### Fixed
+
+- TUI-Detailansicht zeigte fuer ueberfaellige Tasks nur reinen Klartext
+  (`(ueberfaellig)`), ohne Symbol — CLI und TUI-Waisenspalte markieren
+  denselben Zustand mit `⚠`. `src/tui/detail-view.tsx` zeigt jetzt
+  `⚠ ueberfaellig`, wortgleich mit `formatTaskDetail` in der CLI. Die Karte
+  behaelt bewusst `[!]` (ASCII, feste Breite) — siehe
+  [ADR 0004](docs/decisions/0004-marker-auf-karten.md).
+
 ## [0.2.0] - 2026-07-29
 
 > **Bestehendes Board?** Erst `kanban migrate` ausfuehren — siehe
