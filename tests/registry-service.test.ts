@@ -7,7 +7,8 @@ import { tmpdir, homedir } from "node:os";
 import { join, isAbsolute } from "node:path";
 import { RegistryService } from "../src/core/registry-service.ts";
 import { initBoard } from "../src/core/db.ts";
-import { runInit, defaultRegistryDir } from "../src/cli/commands/init.ts";
+import { runInit } from "../src/cli/commands/init.ts";
+import { defaultRegistryDir } from "../src/cli/board-overview.ts";
 
 function freshDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));

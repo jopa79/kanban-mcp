@@ -1,13 +1,13 @@
 // Board-Auswahl fuer die TUI (P3-3): Liste aller registrierten Boards mit
 // aggregierter Uebersicht (Status + Task-Zahl), analog zu 'kanban boards'.
-// runBoardsList() (cli/commands/boards.ts) und readBoardOverview()
-// (cli/board-overview.ts) sind bewusst wiederverwendet, nicht nachgebaut --
-// dort steckt bereits die Logik fuer "welches Board ist wie gesund" inkl.
-// alter Randfaelle (kaputte config.json, gesperrte DB, Schema v2). Der
-// Ablageort dieser Module unter src/cli/ ist fuer eine TUI-Komponente
-// eigentlich falsch -- siehe Bericht an team-lead, hier bewusst nicht
-// verschoben (P3-2 arbeitet parallel in src/cli/, ein Umzug waere ein
-// Eingriff in fremdes Terrain).
+// runBoardsList(), defaultRegistryDir() und readBoardOverview() liegen alle
+// gemeinsam in cli/board-overview.ts (seit F1XuvRKOtNs5) und werden von hier
+// bewusst wiederverwendet, nicht nachgebaut -- dort steckt bereits die Logik
+// fuer "welches Board ist wie gesund" inkl. alter Randfaelle (kaputte
+// config.json, gesperrte DB, Schema v2). board-overview.ts ist die geteilte
+// Schicht fuer beide Oberflaechen: das CLI-Kommando 'kanban boards' nutzt
+// sie ebenso wie diese Datei fuer den TUI-Board-Wechsel -- keine der beiden
+// Oberflaechen importiert mehr aus der Commander-Verdrahtung der anderen.
 //
 // Aufgeteilt in zwei Teile fuer Testbarkeit (gleiches Prinzip wie
 // use-board.ts, siehe Kommentar dort zu 'loadData'/'isOrphanTask'):
@@ -21,9 +21,7 @@
 // verifizieren.
 import React, { useEffect, useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { runBoardsList } from "../cli/commands/boards.ts";
-import { defaultRegistryDir } from "../cli/commands/init.ts";
-import type { BoardOverviewEntry, BoardOverviewStatus } from "../cli/board-overview.ts";
+import { runBoardsList, defaultRegistryDir, type BoardOverviewEntry, type BoardOverviewStatus } from "../cli/board-overview.ts";
 import { ACCENT } from "./theme.ts";
 
 const EMPTY_REGISTRY_HINT = "Keine Boards registriert. 'kanban boards add' im Terminal ausfuehren.";

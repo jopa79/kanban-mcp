@@ -5,12 +5,21 @@
 // (Commander-Verdrahtung) -- dieses Modul ist der einzige Ort, der beides
 // zusammenbringt: "welche Boards gibt es" (Registry) und "wie geht es ihnen"
 // (DB oeffnen, Schema pruefen, Tasks zaehlen).
+//
+// Deckt seit F1XuvRKOtNs5 zusaetzlich die Listen-Aggregation (runBoardsList)
+// und den Registry-Default-Pfad (defaultRegistryDir) ab -- beides vorher in
+// src/cli/commands/ definiert, obwohl Commander-frei. Dadurch importierte die
+// TUI (board-picker.tsx) aus der Commander-Verdrahtung einer anderen
+// Oberflaeche. Jetzt greifen sowohl commands/boards.ts als auch
+// tui/board-picker.tsx auf diese gemeinsame Schicht zu.
 import type { Database } from "bun:sqlite";
+import { homedir } from "node:os";
+import { join, isAbsolute } from "node:path";
 import { boardExists, getBoardPaths, loadBoardConfig, openDb } from "../core/db.ts";
 import { BoardService } from "../core/board-service.ts";
 import { TaskService } from "../core/task-service.ts";
 import { NotesService } from "../core/notes-service.ts";
-import type { RegistryListEntry, RegistryService } from "../core/registry-service.ts";
+import { RegistryService, type RegistryListEntry } from "../core/registry-service.ts";
 
 // Teil der Fehlermeldung aus db.ts assertSchemaCurrent() fuer den Fall
 // "Version zu alt" (".. benoetigt wird ..") -- unterscheidet ihn vom
@@ -96,4 +105,40 @@ export function readBoardOverview(
   } finally {
     db.close();
   }
+}
+
+// Testbarer Kern von 'kanban boards': registryDir immer explizit, wie
+// runInit() in commands/init.ts -- Tests laufen so gegen ein Temp-Verzeichnis,
+// nie gegen die echte Registry. Ein try/catch um die Schleife waere hier
+// falsch (siehe readBoardOverview) -- jedes Board faengt seinen eigenen
+// Fehler ab.
+export function runBoardsList(registryDir: string): BoardOverviewEntry[] {
+  const registry = new RegistryService(registryDir);
+  return registry.list().map((entry) => readBoardOverview(entry, registry));
+}
+
+// Default-Speicherort der Registry. Bewusst NUR hier in der CLI-Schicht --
+// RegistryService bekommt das Verzeichnis immer explizit uebergeben und
+// kennt diesen Pfad nicht.
+//
+// Bewusst NICHT ~/.kanban/ -- das heisst im Code bereits eindeutig "hier
+// liegt ein Board" (siehe getBoardPaths() in db.ts). Ein Board dort UND eine
+// Registry dort wuerden zwei Bedeutungen in einen Pfad legen. Der Fall ist
+// nicht theoretisch: ein versehentliches 'kanban init' im Home-Verzeichnis
+// legt genau dort ein Board an (siehe ADR 0003).
+//
+// Folgt der XDG Base Directory Spec: $XDG_CONFIG_HOME/kanban, sonst
+// ~/.config/kanban. Ein leerer XDG_CONFIG_HOME zaehlt laut Spec als "nicht
+// gesetzt" -- das gehoert zur Konvention dazu, ihn zu ignorieren waere auf
+// Linux-Systemen schlicht falsch.
+//
+// Ein RELATIVER XDG_CONFIG_HOME ist laut Spec ebenfalls ungueltig und zaehlt
+// als nicht gesetzt. Ohne diese Pruefung wuerde die Registry relativ zum
+// jeweiligen Arbeitsverzeichnis landen -- also je nach Aufrufort in einer
+// anderen Datei.
+export function defaultRegistryDir(): string {
+  const xdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const isUsable = xdgConfigHome !== undefined && isAbsolute(xdgConfigHome);
+  const configHome = isUsable ? xdgConfigHome : join(homedir(), ".config");
+  return join(configHome, "kanban");
 }

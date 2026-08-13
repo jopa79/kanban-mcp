@@ -7,6 +7,16 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Board-Listing und Registry-Default in gemeinsame Schicht verschoben.**
+  `runBoardsList()` und `defaultRegistryDir()` lagen bisher in
+  `src/cli/commands/` (Commander-Verdrahtung), obwohl sie Commander-frei
+  waren und auch von der TUI gebraucht wurden. Beide liegen jetzt in
+  `src/cli/board-overview.ts` neben `readBoardOverview()`. `kanban boards`
+  und der TUI-Board-Wechsel greifen unveraendert auf dieselbe Logik zu, die
+  TUI importiert dafuer nicht mehr aus der CLI-Command-Schicht.
+
 ## [0.2.0] - 2026-07-29
 
 > **Bestehendes Board?** Erst `kanban migrate` ausfuehren — siehe
