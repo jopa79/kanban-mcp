@@ -7,26 +7,13 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
-### Fixed
-
-- **Die TUI bekommt fremde Aenderungen jetzt mit** (GitHub #43). Schrieb ein
-  anderer Prozess an dasselbe Board — ein Agent per MCP, eine zweite CLI, eine
-  zweite TUI —, blieb die Anzeige veraltet, bis jemand `r` drueckte. Ursache
-  war die Beobachtungsstelle: `fs.watch` lag auf `board.db`, ein fremder
-  Schreibvorgang landet aber im WAL und laesst `board.db` unberuehrt (mtime und
-  size unveraendert, Inode gleich). Weder `fs.watch` noch `fs.watchFile` konnten
-  ihn dort sehen. Beobachtet wird jetzt das `.kanban`-Verzeichnis, gefiltert auf
-  `board.db*` und entprellt. Gemessen: alte Stelle 0 von 3 fremden
-  Schreibvorgaengen erkannt, neue Stelle 3 von 3.
-- Das `selfWrite`-Flag in `use-board.ts` ist entfallen. Es sollte das naechste
-  Watch-Ereignis nach einem eigenen Schreibvorgang unterdruecken, konnte die
-  1:n-Beziehung zwischen Schreibvorgang und Ereignissen aber nicht abbilden —
-  blieb es gesetzt, haette es die naechste *fremde* Aenderung verschluckt. Ein
-  ueberzaehliger Reload aus einer lokalen SQLite-Datei ist billiger als ein
-  verpasster.
-
 ### Added
 
+- **`kanban_reorder_task`** — neues MCP-Tool, das einen Task innerhalb seiner
+  Spalte eine Position nach oben oder unten schiebt (`direction: "up" | "down"`).
+  Bewusst relativ statt mit absoluter Position, damit MCP und TUI dieselbe
+  Semantik teilen. Kein `reportedBy`: ein Reorder ist kein Spaltenwechsel und
+  schreibt daher keine Transition (GitHub #44).
 - **`kanban status` weist die Groesse der Transitions-Historie aus** (K-5,
   [ADR 0005](docs/decisions/0005-lebensdauer-von-transitions.md)). Die
   `transitions`-Tabelle waechst unbegrenzt: Archivieren setzt nur ein Flag, und
@@ -57,6 +44,28 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Fixed
 
+- **Ein Move ohne Spaltenwechsel schreibt keine Transition mehr.** `applyMove()`
+  protokollierte bei jedem Aufruf, auch wenn Quell- und Zielspalte identisch
+  waren. Die entstehenden `todo -> todo`-Zeilen behaupten einen Zustandswechsel,
+  den es nie gab, und schoben den Task zusaetzlich ans Ende seiner Spalte. Beides
+  verzerrt jede Auswertung auf der `transitions`-Tabelle und ist hinterher nicht
+  mehr von einem echten Move zu unterscheiden. `moveTask()` gibt den Task jetzt
+  unveraendert zurueck, wenn er bereits in der Zielspalte sitzt (GitHub #45).
+- **Die TUI bekommt fremde Aenderungen jetzt mit** (GitHub #43). Schrieb ein
+  anderer Prozess an dasselbe Board — ein Agent per MCP, eine zweite CLI, eine
+  zweite TUI —, blieb die Anzeige veraltet, bis jemand `r` drueckte. Ursache
+  war die Beobachtungsstelle: `fs.watch` lag auf `board.db`, ein fremder
+  Schreibvorgang landet aber im WAL und laesst `board.db` unberuehrt (mtime und
+  size unveraendert, Inode gleich). Weder `fs.watch` noch `fs.watchFile` konnten
+  ihn dort sehen. Beobachtet wird jetzt das `.kanban`-Verzeichnis, gefiltert auf
+  `board.db*` und entprellt. Gemessen: alte Stelle 0 von 3 fremden
+  Schreibvorgaengen erkannt, neue Stelle 3 von 3.
+- Das `selfWrite`-Flag in `use-board.ts` ist entfallen. Es sollte das naechste
+  Watch-Ereignis nach einem eigenen Schreibvorgang unterdruecken, konnte die
+  1:n-Beziehung zwischen Schreibvorgang und Ereignissen aber nicht abbilden —
+  blieb es gesetzt, haette es die naechste *fremde* Aenderung verschluckt. Ein
+  ueberzaehliger Reload aus einer lokalen SQLite-Datei ist billiger als ein
+  verpasster.
 - TUI-Detailansicht zeigte fuer ueberfaellige Tasks nur reinen Klartext
   (`(ueberfaellig)`), ohne Symbol — CLI und TUI-Waisenspalte markieren
   denselben Zustand mit `⚠`. `src/tui/detail-view.tsx` zeigt jetzt
