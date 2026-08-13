@@ -28,6 +28,32 @@ describe("formatStatus", () => {
     expect(out).not.toContain("Ohne Spalte");
   });
 
+  // K-5/ADR 0005: die Transitions-Zahl wird ausgewiesen, damit Wachstum
+  // auffaellt. Gekappt wird in 0.2.0 bewusst nichts.
+  test("ohne transitionCount: keine Transitions-Zeile", () => {
+    const out = formatStatus("Board", columns, 3, 0);
+    expect(out).not.toContain("Transitions");
+  });
+
+  test("mit transitionCount: Zeile mit der Anzahl", () => {
+    const out = formatStatus("Board", columns, 3, 0, 47);
+    expect(out).toContain("Transitions");
+    expect(out).toContain("47");
+  });
+
+  test("transitionCount 0 wird angezeigt, nicht unterdrueckt", () => {
+    // Anders als orphanCount: 0 Waisen sind ein Nicht-Ereignis, 0 Transitions
+    // sind eine Aussage ueber ein frisches Board.
+    const out = formatStatus("Board", columns, 3, 0, 0);
+    expect(out).toContain("Transitions");
+    expect(out).toContain("0");
+  });
+
+  test("grosse Zahlen werden gruppiert, damit die Groessenordnung ins Auge faellt", () => {
+    const out = formatStatus("Board", columns, 3, 0, 12483);
+    expect(out).toContain("12.483");
+  });
+
   test("total im Kopf ist genau das, was der Aufrufer uebergibt -- formatStatus rechnet nicht selbst", () => {
     // Waisen in 'total' einzurechnen ist Verantwortung des Aufrufers
     // (status.ts), nicht von formatStatus selbst (Plan/Kanban-Task P1-6).

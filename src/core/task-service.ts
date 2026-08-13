@@ -466,6 +466,7 @@ export class TaskService extends DependencyService {
     columns: Array<{ column: string; columnId: string; count: number }>;
     total: number;
     orphanCount: number;
+    transitionCount: number;
   } {
     const columns = this.boardService.getColumns();
     const result = columns.map((col) => ({
@@ -476,6 +477,9 @@ export class TaskService extends DependencyService {
     const known = new Set(columns.map((c) => c.id));
     const orphanCount = this.listTasks().filter((t) => !known.has(t.columnId)).length;
     const total = result.reduce((sum, c) => sum + c.count, 0) + orphanCount;
-    return { columns: result, total, orphanCount };
+    // Zeilen in 'transitions' (K-5, ADR 0005). Zaehlt die gesamte Historie,
+    // nicht nur die der aktiven Tasks -- archivierte behalten ihre Zeilen.
+    const transitionCount = this.transitionService.count();
+    return { columns: result, total, orphanCount, transitionCount };
   }
 }

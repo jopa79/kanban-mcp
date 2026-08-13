@@ -67,6 +67,49 @@ describe("addTaskChecked", () => {
   });
 });
 
+describe("getStatus: transitionCount (K-5, ADR 0005)", () => {
+  let ctx: TestContext;
+  afterEach(() => ctx?.cleanup());
+
+  test("frisches Board hat keine Transitions", () => {
+    ctx = createTestBoard();
+    expect(ctx.taskService.getStatus().transitionCount).toBe(0);
+  });
+
+  test("jeder angelegte Task erzeugt genau eine Entstehungs-Transition", () => {
+    ctx = createTestBoard();
+    ctx.taskService.addTask({ title: "A" });
+    ctx.taskService.addTask({ title: "B" });
+    expect(ctx.taskService.getStatus().transitionCount).toBe(2);
+  });
+
+  test("ein Verschieben erhoeht die Zahl um eins", () => {
+    ctx = createTestBoard();
+    const task = ctx.taskService.addTask({ title: "A" });
+    const before = ctx.taskService.getStatus().transitionCount;
+    ctx.taskService.moveTask(task.id, "in-progress");
+    expect(ctx.taskService.getStatus().transitionCount).toBe(before + 1);
+  });
+
+  // Der Kern von K-5: Archivieren setzt nur ein Flag, die Historie bleibt
+  // stehen. Genau deshalb waechst die Tabelle unbegrenzt und wird ausgewiesen.
+  test("Archivieren loescht keine Transitions", () => {
+    ctx = createTestBoard();
+    const task = ctx.taskService.addTask({ title: "A" });
+    ctx.taskService.moveTask(task.id, "in-progress");
+    const before = ctx.taskService.getStatus().transitionCount;
+    expect(before).toBeGreaterThan(0);
+
+    ctx.taskService.moveTask(task.id, "review");
+    ctx.taskService.moveTask(task.id, "done");
+    const beforeArchive = ctx.taskService.getStatus().transitionCount;
+
+    const result = ctx.taskService.archiveTasks();
+    expect(result.archivedCount).toBe(1);
+    expect(ctx.taskService.getStatus().transitionCount).toBe(beforeArchive);
+  });
+});
+
 describe("getStatus", () => {
   let ctx: TestContext;
   afterEach(() => ctx?.cleanup());

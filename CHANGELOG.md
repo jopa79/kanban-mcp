@@ -7,6 +7,18 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+### Added
+
+- **`kanban status` weist die Groesse der Transitions-Historie aus** (K-5,
+  [ADR 0005](docs/decisions/0005-lebensdauer-von-transitions.md)). Die
+  `transitions`-Tabelle waechst unbegrenzt: Archivieren setzt nur ein Flag, und
+  der Reconcile-Sync erzeugt fuer ein erstmals als `completed` gemeldetes Todo
+  vier Zeilen auf einmal. Fuer 0.2.0 wird bewusst nichts gekappt — aber die
+  Zahl ist jetzt sichtbar, damit Wildwuchs auffaellt, bevor die Datei spuerbar
+  waechst. Neu sind `TransitionService.count()` und `transitionCount` in
+  `getStatus()`; das Feld erscheint additiv auch in `kanban status --json` und
+  im MCP-Tool `kanban_status`.
+
 ### Changed
 
 - **Reservierte Spalten-IDs werden abgelehnt.** `config.json` darf die ID der

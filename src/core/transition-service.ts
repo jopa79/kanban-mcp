@@ -210,6 +210,17 @@ export class TransitionService {
     );
   }
 
+  // Gesamtzahl protokollierter Transitions ueber alle Tasks (K-5, ADR 0005).
+  // Die Tabelle waechst unbegrenzt: 'archiveTasks' setzt nur ein Flag und
+  // loescht nichts, und der Reconcile-Sync erzeugt fuer ein Todo, das erstmals
+  // als 'completed' auftaucht, vier Zeilen auf einmal. Nichts kappt das heute.
+  // 'kanban status' weist die Zahl deshalb aus -- solange niemand sie sieht,
+  // faellt ein Wildwuchs erst auf, wenn die Datei spuerbar gross ist.
+  count(): number {
+    const row = this.db.query("SELECT COUNT(*) AS n FROM transitions").get() as { n: number };
+    return row.n;
+  }
+
   // Vollstaendige Transition-Historie eines Tasks, chronologisch aufsteigend.
   // 'id ASC' als Tie-Breaker, falls zwei Transitions denselben Zeitstempel haben.
   history(taskId: string): Transition[] {

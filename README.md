@@ -112,7 +112,7 @@ kanban update <id> -p low --due 2026-12-25
 kanban update <id> -t "Neuer Titel"
 kanban delete <id>
 
-# Board-Status
+# Board-Status (Spalten, Waisen, Groesse der Transitions-Historie)
 kanban status
 
 # Bestehendes Board auf Schema v3 heben (siehe Migration oben)
