@@ -32,6 +32,16 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   werden bei Bedarf per `moveTask(id, columnId, { override: true })`
   weiterbewegt — dieselbe oeffentliche, protokollierte Umgehung wie in
   `tests/helpers.ts`.
+- `kanban tui` ohne TTY (Agent, CI, Pipe) endete bisher in einem
+  React-Stacktrace samt irrefuehrender "Encountered two children with the
+  same key"-Warnung. Root Cause war ein Bug in Ink selbst: Inks eigene
+  `ErrorOverview` verwendet rohe Stacktrace-Zeilen als React-Key, und die
+  rekursive Reconciler-Funktion, die den Raw-Mode-Fehler ohne TTY auffaengt,
+  erzeugt dabei mehrfach dieselbe Zeile (siehe `node_modules/ink/build/
+  components/ErrorOverview.js`). `kanban tui` prueft jetzt vor dem Mounten,
+  ob ein interaktives Terminal verfuegbar ist, und bricht sonst mit einer
+  verstaendlichen deutschen Meldung ab, statt den kaputten Ink-Pfad zu
+  durchlaufen (Kanban-Task DUFjVlN6vOE-, GitHub #37).
 
 ## [0.2.0] - 2026-07-29
 
