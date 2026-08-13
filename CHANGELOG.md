@@ -9,6 +9,14 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Changed
 
+- **Reservierte Spalten-IDs werden abgelehnt.** `config.json` darf die ID der
+  virtuellen Waisen-Sammelspalte (`__orphan__`) nicht fuer eine echte Spalte
+  vergeben — `validateColumnConfig()` bricht sonst mit einer verstaendlichen
+  Meldung ab. Vorher waere die ID durchgegangen und die Spalte in der TUI
+  doppelt in der Anzeige-Liste gelandet (React-Key-Kollision in
+  `board-view.tsx`). Die Konstante liegt jetzt in `src/core/types.ts` statt in
+  `src/tui/theme.ts`: sie ist ein Domaenenbegriff, und `core` darf nicht aus
+  `tui` importieren (GitHub #41).
 - **Board-Listing und Registry-Default in gemeinsame Schicht verschoben.**
   `runBoardsList()` und `defaultRegistryDir()` lagen bisher in
   `src/cli/commands/` (Commander-Verdrahtung), obwohl sie Commander-frei

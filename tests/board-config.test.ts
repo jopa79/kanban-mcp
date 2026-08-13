@@ -3,7 +3,12 @@ import { test, expect, describe, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { validateBoardConfig, type ColumnConfig } from "../src/core/types.ts";
+import {
+  validateBoardConfig,
+  ORPHAN_COLUMN_ID,
+  RESERVED_COLUMN_IDS,
+  type ColumnConfig,
+} from "../src/core/types.ts";
 import { loadBoardConfig } from "../src/core/db.ts";
 
 // Gueltige Referenz-Config (Zielformat aus K-1)
@@ -71,6 +76,33 @@ describe("validateBoardConfig", () => {
     const cols: Array<ColumnConfig & { position?: number }> = validColumns();
     cols[2]!.position = 2;
     expect(() => validateBoardConfig(validRaw({ columns: cols }))).toThrow(/position/);
+  });
+
+  // Die Waisen-Sammelspalte ist virtuell und wird der Anzeige-Liste zur Laufzeit
+  // angehaengt. Traege eine echte Spalte dieselbe id, staenden zwei Eintraege mit
+  // gleicher id in der Liste — in board-view.tsx eine React-Key-Kollision.
+  test("wirft Fehler bei reservierter Spalten-id (Waisen-Sammelspalte)", () => {
+    const cols = validColumns();
+    cols[1]!.id = ORPHAN_COLUMN_ID;
+    expect(() => validateBoardConfig(validRaw({ columns: cols }))).toThrow(/reservierte/);
+  });
+
+  test("lehnt jede reservierte id ab, nicht nur die erste", () => {
+    // Ohne diese Zusicherung waere der Test bei leerer Liste stillschweigend gruen.
+    expect(RESERVED_COLUMN_IDS.length).toBeGreaterThan(0);
+    for (const reserved of RESERVED_COLUMN_IDS) {
+      const cols = validColumns();
+      cols[0]!.id = reserved;
+      expect(() => validateBoardConfig(validRaw({ columns: cols }))).toThrow(/reservierte/);
+    }
+  });
+
+  test("die Fehlermeldung nennt die betroffene id", () => {
+    const cols = validColumns();
+    cols[3]!.id = ORPHAN_COLUMN_ID;
+    expect(() => validateBoardConfig(validRaw({ columns: cols }))).toThrow(
+      new RegExp(ORPHAN_COLUMN_ID),
+    );
   });
 });
 

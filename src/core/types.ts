@@ -12,6 +12,23 @@ export interface Column {
   isTerminal: boolean;
 }
 
+// Sentinel-ID der virtuellen Sammelspalte fuer Waisen-Tasks (P1-6, ADR 0001).
+// Kein Task hat diese column_id jemals real in der DB — sie taucht nur in der
+// aus 'columns' abgeleiteten Anzeige-Liste auf (siehe use-board.ts:
+// displayColumns/isOrphanTask, board-view.tsx).
+//
+// Steht hier und nicht in tui/theme.ts, weil es ein Domaenenbegriff ist und
+// keine Darstellungsfrage: config.json darf die ID nicht vergeben, und diese
+// Regel gehoert zur Validierung in dieser Datei. 'core' darf nicht aus 'tui'
+// importieren — die Abhaengigkeit laeuft nur in diese Richtung.
+export const ORPHAN_COLUMN_ID = "__orphan__";
+
+// Spalten-IDs, die config.json nicht vergeben darf, weil die Anzeige sie fuer
+// virtuelle Spalten belegt. Traefe eine echte Spalte auf eine davon, stuenden
+// zwei Eintraege mit derselben ID in der Anzeige-Liste (board-view.tsx) und
+// kollidierten als React-Key.
+export const RESERVED_COLUMN_IDS: readonly string[] = [ORPHAN_COLUMN_ID];
+
 // Prioritaet eines Tasks — echte, sortierbare Spalte seit Schema v3 (Paket 0),
 // durchgereicht ueber CLI/MCP seit Paket 2 (P2-1/P2-2). Echte Spalte statt
 // Label, weil nur eine Spalte eine Ordnung hat: 'priority:high' als Label
@@ -344,6 +361,15 @@ function validateColumnConfig(raw: unknown, index: number): ColumnConfig {
 
   if (typeof col.id !== "string" || col.id.length === 0) {
     throw new Error(`config.json: Spalte an Index ${index} hat keine gueltige 'id'`);
+  }
+  // Reservierte IDs gehoeren den virtuellen Anzeige-Spalten. Eine echte Spalte
+  // mit derselben ID waere in der Anzeige doppelt vorhanden — deshalb hier
+  // ablehnen statt es spaeter im Rendern auffallen zu lassen.
+  if (RESERVED_COLUMN_IDS.includes(col.id)) {
+    throw new Error(
+      `config.json: Spalte an Index ${index} verwendet die reservierte 'id' '${col.id}' — ` +
+      "diese ID gehoert einer virtuellen Anzeige-Spalte, bitte eine andere waehlen",
+    );
   }
   if (typeof col.name !== "string" || col.name.length === 0) {
     throw new Error(`config.json: Spalte '${col.id}' hat keinen gueltigen 'name'`);
