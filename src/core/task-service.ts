@@ -235,6 +235,16 @@ export class TaskService extends DependencyService {
     const column = this.boardService.getColumn(columnId);
     if (!column) throw new Error(`Spalte '${columnId}' existiert nicht`);
 
+    // No-Op: Ziel ist die Spalte, in der der Task schon steht. Ohne diesen
+    // Guard schreibt applyMove() eine Transition 'todo -> todo', die einen
+    // Zustandswechsel behauptet, der nie stattfand, und schiebt den Task
+    // zusaetzlich ans Ende der Spalte. Beides verfaelscht Auswertungen ueber
+    // die transitions-Tabelle. Position bleibt unveraendert -- "verschiebe
+    // dorthin, wo der Task schon ist" darf die Reihenfolge nicht anfassen.
+    // Bewusst hier und nicht in applyMove(): completeTask() ruft applyMove()
+    // ebenfalls auf, dort ist die Zielspalte per Definition eine andere.
+    if (task.columnId === columnId) return task;
+
     const wipPolicy = opts?.wipPolicy ?? "reject";
     let wasOverride = opts?.override ?? false;
     let reason = opts?.reason ?? null;
