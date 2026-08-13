@@ -1,5 +1,6 @@
 // Zentrale Farbkonstanten fuer die Kanban TUI
 import type { TaskPriority } from "../core/types.ts";
+import { ORPHAN_COLUMN_ID } from "../core/types.ts";
 
 // Akzentfarben fuer Task-Elemente
 export const ACCENT = {
@@ -20,11 +21,9 @@ export const ACCENT = {
   overdue: "#f97316",    // Orange — Ueberfaellig-Marker
 };
 
-// Sentinel-ID der virtuellen Sammelspalte fuer Waisen-Tasks (P1-6, ADR 0001).
-// Kein Task hat diese column_id jemals real in der DB — sie taucht nur in der
-// aus 'columns' abgeleiteten Anzeige-Liste auf (siehe use-board.ts:
-// displayColumns/isOrphanTask, board-view.tsx).
-export const ORPHAN_COLUMN_ID = "__orphan__";
+// Die Sentinel-ID der Waisen-Sammelspalte liegt in core/types.ts, weil
+// validateColumnConfig() sie dort als reservierte ID ablehnen muss. Hier wird
+// sie nur noch fuer die Farbzuordnung gebraucht.
 
 // Spaltenfarben — klar unterscheidbar im Terminal
 export const COLUMN_COLORS: Record<string, string> = {

@@ -3,7 +3,8 @@ import React, { useState, useEffect } from "react";
 import { Box, Text, useStdout } from "ink";
 import type { Column, Task } from "../core/types.ts";
 import { TaskCard } from "./task-card.tsx";
-import { getColumnColor, ACCENT, ORPHAN_COLUMN_ID } from "./theme.ts";
+import { getColumnColor, ACCENT } from "./theme.ts";
+import { ORPHAN_COLUMN_ID } from "../core/types.ts";
 
 // Geschaetzte Hoehe pro Task-Karte (Titel + Meta + Borders)
 const CARD_HEIGHT = 4;

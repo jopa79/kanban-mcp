@@ -6,7 +6,7 @@ import { openDb, getBoardPaths, loadBoardConfig } from "../core/db.ts";
 import { BoardService } from "../core/board-service.ts";
 import { TaskService } from "../core/task-service.ts";
 import { NotesService } from "../core/notes-service.ts";
-import { ORPHAN_COLUMN_ID } from "./theme.ts";
+import { ORPHAN_COLUMN_ID } from "../core/types.ts";
 
 // Ergebnis einer Aktion, die von der Zustandsmaschine abgelehnt werden kann
 // (moveTask, completeTask). Statt zu werfen wird die Ablehnung bis in die

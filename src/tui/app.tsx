@@ -16,7 +16,8 @@ import { DependencyView } from "./dependency-view.tsx";
 import { BoardPicker } from "./board-picker.tsx";
 import { useBoard, isOrphanTask, resolveEffectiveSort } from "./use-board.ts";
 import { useInputModes, type Mode, type PendingOverride } from "./use-input-modes.ts";
-import { getColumnColor, getPriorityLabel, ACCENT, ORPHAN_COLUMN_ID } from "./theme.ts";
+import { getColumnColor, getPriorityLabel, ACCENT } from "./theme.ts";
+import { ORPHAN_COLUMN_ID } from "../core/types.ts";
 
 interface AppProps {
   workingDir: string;
