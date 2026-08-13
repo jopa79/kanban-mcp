@@ -400,3 +400,104 @@ describe("MCP-Tools — priority/dueDate (P2-1/P2-2)", () => {
     expect(enriched.dueDate).toBe("2026-08-01");
   });
 });
+
+// GitHub #44: TaskService.reorderTask existierte seit P2-3 und wurde von der
+// TUI genutzt, war aber nie als MCP-Tool exponiert. Agents konnten die
+// Reihenfolge im Todo nur ueber einen Self-Move ueber kanban_move_task
+// beeinflussen -- der unechte Transitionen schrieb (siehe #45).
+describe("MCP-Tools — kanban_reorder_task (#44)", () => {
+  let ctx: McpTestContext;
+  afterEach(() => ctx?.cleanup());
+
+  // Legt zwei Tasks im Todo an und gibt sie in Anlagereihenfolge zurueck.
+  async function addTwo(): Promise<[string, string]> {
+    const ids: string[] = [];
+    for (const title of ["Erster", "Zweiter"]) {
+      const res = await ctx.client.callTool({
+        name: "kanban_add_task",
+        arguments: { title, reportedBy: "teamlead" },
+      });
+      ids.push(extractTaskId(textOf(res)));
+    }
+    return [ids[0]!, ids[1]!];
+  }
+
+  async function positionOf(id: string): Promise<number> {
+    const res = await ctx.client.callTool({ name: "kanban_get_task", arguments: { id } });
+    return JSON.parse(textOf(res)).position;
+  }
+
+  test("das Tool ist registriert", async () => {
+    ctx = await createMcpTestClient();
+    const { tools } = await ctx.client.listTools();
+    expect(tools.map((t) => t.name)).toContain("kanban_reorder_task");
+  });
+
+  test("direction: up tauscht den Task mit seinem Vorgaenger", async () => {
+    ctx = await createMcpTestClient();
+    const [first, second] = await addTwo();
+
+    const result = await ctx.client.callTool({
+      name: "kanban_reorder_task",
+      arguments: { id: second, direction: "up" },
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(await positionOf(second)).toBeLessThan(await positionOf(first));
+  });
+
+  test("direction: down tauscht den Task mit seinem Nachfolger", async () => {
+    ctx = await createMcpTestClient();
+    const [first, second] = await addTwo();
+
+    await ctx.client.callTool({ name: "kanban_reorder_task", arguments: { id: first, direction: "down" } });
+
+    expect(await positionOf(first)).toBeGreaterThan(await positionOf(second));
+  });
+
+  test("schreibt keine Transition — ein Reorder ist kein Spaltenwechsel", async () => {
+    ctx = await createMcpTestClient();
+    const [first, second] = await addTwo();
+    const before = readHistory(ctx.dir, second).length;
+
+    await ctx.client.callTool({ name: "kanban_reorder_task", arguments: { id: second, direction: "up" } });
+
+    expect(readHistory(ctx.dir, second)).toHaveLength(before);
+    expect(readHistory(ctx.dir, first)).toHaveLength(1);
+  });
+
+  test("ohne Nachbar in der Richtung: No-Op statt Fehler", async () => {
+    ctx = await createMcpTestClient();
+    const [first] = await addTwo();
+
+    const result = await ctx.client.callTool({
+      name: "kanban_reorder_task",
+      arguments: { id: first, direction: "up" },
+    });
+
+    expect(result.isError).toBeUndefined();
+    expect(await positionOf(first)).toBe(0);
+  });
+
+  test("unbekannte Task-ID meldet einen Fehler statt still zu scheitern", async () => {
+    ctx = await createMcpTestClient();
+    const result = await ctx.client.callTool({
+      name: "kanban_reorder_task",
+      arguments: { id: "gibt-es-nicht", direction: "up" },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/nicht gefunden/);
+  });
+
+  test("ungueltige direction wird vom Schema abgelehnt", async () => {
+    ctx = await createMcpTestClient();
+    const [first] = await addTwo();
+    const result = await ctx.client.callTool({
+      name: "kanban_reorder_task",
+      arguments: { id: first, direction: "seitwaerts" },
+    });
+
+    expect(result.isError).toBe(true);
+  });
+});

@@ -153,6 +153,33 @@ export function registerTools(server: McpServer, workingDir: string): void {
     },
   );
 
+  // --- kanban_reorder_task ---
+  // Kein 'reportedBy': ein Reorder ist kein Spaltenwechsel und schreibt daher
+  // keine Transition -- der Parameter haette hier keine Wirkung. Bewusst
+  // up/down statt einer absoluten Position, damit MCP und TUI (use-board.ts)
+  // dieselbe Semantik teilen.
+  server.registerTool(
+    "kanban_reorder_task",
+    {
+      title: "Task umsortieren",
+      description: "Task innerhalb seiner Spalte eine Position nach oben oder unten schieben",
+      inputSchema: z.object({
+        id: z.string().describe("Task-ID"),
+        direction: z.enum(["up", "down"]).describe("Richtung: up (nach oben) oder down (nach unten)"),
+      }),
+    },
+    async ({ id, direction }) => {
+      try {
+        return withContext(workingDir, ({ taskService }) => {
+          const task = taskService.reorderTask(id, direction);
+          return { content: [{ type: "text", text: `Task umsortiert: "${task.title}" (ID: ${task.id}) → Position ${task.position} in ${task.columnId}` }] };
+        });
+      } catch (err) {
+        return { content: [{ type: "text", text: `Fehler: ${(err as Error).message}` }], isError: true };
+      }
+    },
+  );
+
   // --- kanban_update_task ---
   server.registerTool(
     "kanban_update_task",
