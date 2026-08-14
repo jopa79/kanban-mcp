@@ -1,4 +1,4 @@
-// Tests fuer watchBoardChanges (use-board.ts) -- Kanban-Task vfPIkirrvvm0,
+// Tests fuer watchBoardChanges (watch-board.ts) -- Kanban-Task vfPIkirrvvm0,
 // GitHub #43.
 //
 // Der Bug: Die TUI beobachtete `board.db` und sah fremde Aenderungen nie, weil
@@ -12,7 +12,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { initBoard, getBoardPaths } from "../src/core/db.ts";
-import { watchBoardChanges, isBoardChange, loadData } from "../src/tui/use-board.ts";
+import { watchBoardChanges, isBoardChange } from "../src/tui/watch-board.ts";
+// loadData bleibt in use-board.ts -- der Regressionstest gegen das Flackern
+// braucht es, weil erst das echte Lesen den Kreislauf entstehen laesst.
+import { loadData } from "../src/tui/use-board.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

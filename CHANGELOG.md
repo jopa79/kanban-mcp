@@ -26,6 +26,14 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Changed
 
+- **Die Verzeichnis-Beobachtung liegt jetzt in `src/tui/watch-board.ts`.**
+  `use-board.ts` trug DB-Zugriff, Beobachtung und den React-Hook in einer Datei
+  und lag bei 354 Zeilen, ueber dem Richtwert von 200–300. Der Watcher
+  (`isBoardChange()`, `watchBoardChanges()`) ist der einzige React-freie Teil
+  davon — reine Dateisystem-Beobachtung ohne Hook und State — und hatte bereits
+  eine eigene Testdatei. Reine Verschiebung ohne Verhaltensaenderung;
+  `use-board.ts` liegt danach bei 285 Zeilen.
+
 - **Reservierte Spalten-IDs werden abgelehnt.** `config.json` darf die ID der
   virtuellen Waisen-Sammelspalte (`__orphan__`) nicht fuer eine echte Spalte
   vergeben — `validateColumnConfig()` bricht sonst mit einer verstaendlichen
