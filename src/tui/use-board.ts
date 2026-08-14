@@ -120,6 +120,27 @@ function withServices<T>(workingDir: string, action: (ts: TaskService) => T): T 
 //
 // Exportiert, damit der Regressionstest einen echten fremden Schreibvorgang
 // gegen die echte Beobachtungslogik pruefen kann statt gegen einen Nachbau.
+const BOARD_DB_PREFIX = "board.db";
+
+// Der gemeinsame Speicher des WAL-Index. Er wird schon vom reinen LESEN
+// angefasst -- auch von unserem eigenen refresh(), das die DB oeffnet und
+// wieder schliesst. Er traegt damit kein Signal ueber geaenderte Daten,
+// sondern nur darueber, dass gerade jemand hingeschaut hat.
+const WAL_INDEX_FILE = `${BOARD_DB_PREFIX}-shm`;
+
+// Ob eine Dateiaenderung im Board-Verzeichnis einen Reload rechtfertigt.
+//
+// Rein und exportiert, damit die Filterregel ohne Timing und ohne zweiten
+// Prozess pruefbar ist -- der Kreislauf, den sie verhindert, laesst sich sonst
+// nur ueber Wartezeiten nachweisen.
+export function isBoardChange(filename: string | null | undefined): boolean {
+  // Ohne Dateinamen (kommt auf manchen Plattformen vor) im Zweifel neu laden:
+  // ein ueberzaehliger Reload ist harmlos, ein verpasster kostet Vertrauen.
+  if (!filename) return true;
+  if (!filename.startsWith(BOARD_DB_PREFIX)) return false;
+  return filename !== WAL_INDEX_FILE;
+}
+
 export function watchBoardChanges(
   kanbanDir: string,
   onChange: () => void,
@@ -129,8 +150,16 @@ export function watchBoardChanges(
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     watcher = watch(kanbanDir, (_type, filename) => {
-      // config.json und notes/ loesen keinen Board-Reload aus.
-      if (filename && !filename.startsWith("board.db")) return;
+      // config.json, notes/ und der WAL-Index loesen keinen Board-Reload aus.
+      //
+      // Der WAL-Index ist dabei der wichtige Fall: Bliebe er drin, koppelte
+      // sich der Watcher an seine eigene Wirkung zurueck -- refresh() liest,
+      // das Lesen fasst `board.db-shm` an, das Ereignis loest den naechsten
+      // refresh() aus. Gemessen: 49 Reloads in 3 Sekunden ohne jede fremde
+      // Aenderung, in der TUI als Dauerflackern sichtbar. Fremde
+      // Schreibvorgaenge bleiben trotzdem sichtbar, die landen im WAL selbst
+      // (`board.db-wal`) und nicht in dessen Index.
+      if (!isBoardChange(filename)) return;
       // Ein Schreibvorgang erzeugt ein bis zwei Ereignisse (DB und WAL) --
       // entprellen statt zaehlen, sonst laedt ein einzelner Move doppelt neu.
       clearTimeout(timer);

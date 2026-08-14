@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { initBoard, getBoardPaths } from "../src/core/db.ts";
-import { watchBoardChanges } from "../src/tui/use-board.ts";
+import { watchBoardChanges, isBoardChange, loadData } from "../src/tui/use-board.ts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -101,6 +101,53 @@ describe("watchBoardChanges", () => {
     await sleep(300);
 
     expect(calls).toBe(0);
+  });
+
+  // Der Regressionstest gegen das Flackern: Ein reiner Lesevorgang oeffnet und
+  // schliesst die DB und fasst dabei `board.db-shm` an. Zaehlte der Watcher das
+  // als Aenderung, loeste jeder Reload den naechsten aus -- gemessen 49 Reloads
+  // in 3 Sekunden, ohne dass irgendjemand etwas geschrieben haette.
+  //
+  // Bewusst mit dem echten loadData() als Callback statt mit einem Zaehler
+  // allein: Der Kreislauf entsteht erst dadurch, DASS der Callback liest. Ein
+  // Test, der nur zaehlt, wuerde ihn nie reproduzieren.
+  test("ein Reload loest keinen weiteren Reload aus", async () => {
+    const { dir, kanbanDir } = board();
+    let calls = 0;
+    stops.push(watchBoardChanges(kanbanDir, () => { calls++; loadData(dir); }, 20));
+    await sleep(300);
+    calls = 0;
+
+    loadData(dir); // ein einziger Anstoss -- danach passiert nichts von aussen
+    await sleep(1500);
+
+    // Der Anstoss selbst darf nachhallen (ein Reload ist erlaubt), aber er darf
+    // sich nicht selbst tragen. Mit dem Fehler stand hier eine zweistellige Zahl.
+    expect(calls).toBeLessThanOrEqual(1);
+  }, 15000);
+
+  describe("isBoardChange", () => {
+    test("die Datenbank und ihr WAL zaehlen als Aenderung", () => {
+      expect(isBoardChange("board.db")).toBe(true);
+      expect(isBoardChange("board.db-wal")).toBe(true);
+    });
+
+    // Der Kern des Fixes -- der WAL-Index meldet nur, dass jemand gelesen hat.
+    test("der WAL-Index zaehlt nicht als Aenderung", () => {
+      expect(isBoardChange("board.db-shm")).toBe(false);
+    });
+
+    test("fremde Dateien zaehlen nicht als Aenderung", () => {
+      expect(isBoardChange("config.json")).toBe(false);
+      expect(isBoardChange("notes")).toBe(false);
+    });
+
+    // Ohne Dateinamen im Zweifel neu laden: ein ueberzaehliger Reload ist
+    // harmlos, ein verpasster kostet dem Nutzer das Vertrauen in die Anzeige.
+    test("ohne Dateinamen wird im Zweifel neu geladen", () => {
+      expect(isBoardChange(null)).toBe(true);
+      expect(isBoardChange(undefined)).toBe(true);
+    });
   });
 
   // Ein fehlendes Verzeichnis darf die TUI nicht mitreissen -- ohne Watch
