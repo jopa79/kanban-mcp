@@ -121,8 +121,14 @@ describe("watchBoardChanges", () => {
     loadData(dir); // ein einziger Anstoss -- danach passiert nichts von aussen
     await sleep(1500);
 
-    // Der Anstoss selbst darf nachhallen (ein Reload ist erlaubt), aber er darf
-    // sich nicht selbst tragen. Mit dem Fehler stand hier eine zweistellige Zahl.
+    // Genau ein Reload ist erlaubt, und zwar aus einem benannten Grund: Fehlen
+    // `board.db-wal` und `board.db-shm` noch (kalter Zustand -- erster Start,
+    // oder nach einem sauberen Checkpoint), legt der erste Lesevorgang beide an
+    // und laesst dabei auch den WAL feuern. Der daraus folgende Reload liest
+    // warm und beruehrt nur noch den Index, den wir ignorieren -- es
+    // konvergiert nach einem Zyklus. Was hier NICHT stehen darf, ist eine
+    // Kette, die sich selbst traegt: mit dem Fehler stand hier eine
+    // zweistellige Zahl.
     expect(calls).toBeLessThanOrEqual(1);
   }, 15000);
 
@@ -144,9 +150,9 @@ describe("watchBoardChanges", () => {
 
     // Ohne Dateinamen im Zweifel neu laden: ein ueberzaehliger Reload ist
     // harmlos, ein verpasster kostet dem Nutzer das Vertrauen in die Anzeige.
+    // `fs.watch` liefert `string | null` -- mehr Faelle gibt es nicht.
     test("ohne Dateinamen wird im Zweifel neu geladen", () => {
       expect(isBoardChange(null)).toBe(true);
-      expect(isBoardChange(undefined)).toBe(true);
     });
   });
 

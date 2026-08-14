@@ -67,9 +67,12 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   der Watcher an seine eigene Wirkung zurueckgekoppelt: lesen, Ereignis,
   Reload, lesen. Gemessen auf einem Wegwerf-Board: 49 Reloads in 3 Sekunden
   ohne eine einzige fremde Aenderung — jeder mit drei `setState`, in der TUI
-  als Dauerflackern sichtbar; nach dem Fix 0. Der WAL-Index ist jetzt vom
-  Filter ausgenommen (`isBoardChange()`), fremde Schreibvorgaenge bleiben
-  sichtbar: die landen im WAL selbst, nicht in dessen Index.
+  als Dauerflackern sichtbar. Der WAL-Index ist jetzt vom Filter ausgenommen
+  (`isBoardChange()`), fremde Schreibvorgaenge bleiben sichtbar: die landen im
+  WAL selbst, nicht in dessen Index. Danach bleibt es im Dauerbetrieb bei 0
+  ueberzaehligen Reloads; nur beim allerersten Lesevorgang eines noch kalten
+  Boards (`board.db-wal` und `board.db-shm` fehlen) kostet das Anlegen der
+  beiden Dateien einen einzelnen Reload, der sich selbst beendet.
 - Das `selfWrite`-Flag in `use-board.ts` ist entfallen. Es sollte das naechste
   Watch-Ereignis nach einem eigenen Schreibvorgang unterdruecken, konnte die
   1:n-Beziehung zwischen Schreibvorgang und Ereignissen aber nicht abbilden —
