@@ -106,6 +106,36 @@ function withServices<T>(workingDir: string, action: (ts: TaskService) => T): T 
   return result;
 }
 
+const BOARD_DB_PREFIX = "board.db";
+
+// Der gemeinsame Speicher des WAL-Index -- die eine Datei, die auch ein reiner
+// LESEVORGANG anfasst, weil `openDb()` sie beim Oeffnen anlegt bzw. beim
+// Schliessen wieder abraeumt. Sie meldet damit nicht, dass sich Daten geaendert
+// haben, sondern nur, dass jemand hingeschaut hat -- auch dann, wenn dieser
+// jemand unser eigenes refresh() war.
+//
+// Zaehlte der Filter sie mit, waere der Watcher an seine eigene Wirkung
+// zurueckgekoppelt: lesen, Ereignis, Reload, lesen. Gemessen auf einem
+// Wegwerf-Board, ein Anstoss und danach keine fremde Aenderung: 49 Reloads in
+// 3 Sekunden, jeder mit drei setState -- in der TUI als Dauerflackern sichtbar.
+//
+// Fremde Schreibvorgaenge bleiben trotzdem sichtbar: die landen im WAL selbst
+// (`board.db-wal`), nicht in dessen Index.
+const WAL_INDEX_FILE = `${BOARD_DB_PREFIX}-shm`;
+
+// Ob eine Dateiaenderung im Board-Verzeichnis einen Reload rechtfertigt.
+//
+// Rein und exportiert, damit die Filterregel ohne Timing und ohne zweiten
+// Prozess pruefbar ist -- der Kreislauf, den sie verhindert, laesst sich sonst
+// nur ueber Wartezeiten nachweisen.
+export function isBoardChange(filename: string | null): boolean {
+  // Ohne Dateinamen (kommt auf manchen Plattformen vor) im Zweifel neu laden:
+  // ein ueberzaehliger Reload ist harmlos, ein verpasster kostet Vertrauen.
+  if (!filename) return true;
+  if (!filename.startsWith(BOARD_DB_PREFIX)) return false;
+  return filename !== WAL_INDEX_FILE;
+}
+
 // Beobachtet ein Board-Verzeichnis und meldet fremde Aenderungen (MCP-Agent,
 // zweite CLI, zweite TUI). Liefert die Abmelde-Funktion zurueck.
 //
@@ -129,8 +159,9 @@ export function watchBoardChanges(
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     watcher = watch(kanbanDir, (_type, filename) => {
-      // config.json und notes/ loesen keinen Board-Reload aus.
-      if (filename && !filename.startsWith("board.db")) return;
+      // config.json, notes/ und der WAL-Index loesen keinen Board-Reload aus --
+      // warum gerade der Index nicht, steht bei WAL_INDEX_FILE.
+      if (!isBoardChange(filename)) return;
       // Ein Schreibvorgang erzeugt ein bis zwei Ereignisse (DB und WAL) --
       // entprellen statt zaehlen, sonst laedt ein einzelner Move doppelt neu.
       clearTimeout(timer);

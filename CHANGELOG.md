@@ -58,8 +58,21 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   Schreibvorgang landet aber im WAL und laesst `board.db` unberuehrt (mtime und
   size unveraendert, Inode gleich). Weder `fs.watch` noch `fs.watchFile` konnten
   ihn dort sehen. Beobachtet wird jetzt das `.kanban`-Verzeichnis, gefiltert auf
-  `board.db*` und entprellt. Gemessen: alte Stelle 0 von 3 fremden
-  Schreibvorgaengen erkannt, neue Stelle 3 von 3.
+  die Datenbank und ihren WAL und entprellt. Gemessen: alte Stelle 0 von 3
+  fremden Schreibvorgaengen erkannt, neue Stelle 3 von 3.
+- **Die TUI flackert nicht mehr.** Der Verzeichnis-Watcher filterte auf
+  `board.db*` und zaehlte damit auch `board.db-shm` als Aenderung — den Index
+  des WAL. Diese Datei wird schon vom reinen *Lesen* angefasst, also auch von
+  jedem eigenen `refresh()`, das die DB oeffnet und wieder schliesst. Damit war
+  der Watcher an seine eigene Wirkung zurueckgekoppelt: lesen, Ereignis,
+  Reload, lesen. Gemessen auf einem Wegwerf-Board: 49 Reloads in 3 Sekunden
+  ohne eine einzige fremde Aenderung — jeder mit drei `setState`, in der TUI
+  als Dauerflackern sichtbar. Der WAL-Index ist jetzt vom Filter ausgenommen
+  (`isBoardChange()`), fremde Schreibvorgaenge bleiben sichtbar: die landen im
+  WAL selbst, nicht in dessen Index. Danach bleibt es im Dauerbetrieb bei 0
+  ueberzaehligen Reloads; nur beim allerersten Lesevorgang eines noch kalten
+  Boards (`board.db-wal` und `board.db-shm` fehlen) kostet das Anlegen der
+  beiden Dateien einen einzelnen Reload, der sich selbst beendet.
 - Das `selfWrite`-Flag in `use-board.ts` ist entfallen. Es sollte das naechste
   Watch-Ereignis nach einem eigenen Schreibvorgang unterdruecken, konnte die
   1:n-Beziehung zwischen Schreibvorgang und Ereignissen aber nicht abbilden —
