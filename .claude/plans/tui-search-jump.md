@@ -149,6 +149,8 @@ Nicht durchsucht: `createdAt`, Labels, `assignedTo`, archivierte Tasks.
     Ziffernposition, Bindestrich an Position 5 und 8, Monatszehner 0 oder
     1, Tageszehner 0 bis 3, plus die Bereichsprüfung, sobald eine Gruppe
     vollständig ist. Keine Monster-Regex.
+    Prüfreihenfolge: erst die Regex für die vollständige Form, DANN die
+    Präfix-Prüfung. `2026-09` ist beides und muss `prefix` ergeben.
   - **invalid** (kann kein gültiges Datum mehr werden, z.B. `morgen`,
     `2026-13`, `2026-09-32`, elf und mehr Zeichen): leere Liste plus
     Hinweis "Ungueltiges Datum, erwartet JJJJ-MM oder JJJJ-MM-TT". Kein
