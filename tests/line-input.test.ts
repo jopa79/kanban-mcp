@@ -128,3 +128,50 @@ describe("reduceLineInput -- Enter/Esc", () => {
     expect(action).toBe("cancel");
   });
 });
+
+// Regressionstests fuer den Code-Point-Fix (gefunden im Review von #50):
+// ein Emoji ausserhalb der Basic Multilingual Plane (z.B. 😀, U+1F600)
+// besteht aus zwei UTF-16-Code-Units, aber einem Code-Point. Vor dem Fix
+// zerlegte ein Backspace direkt danach das Surrogatpaar in ein einzelnes,
+// ungueltiges Lone-Surrogate-Zeichen.
+describe("reduceLineInput -- Emoji (Code-Points statt Code-Units)", () => {
+  const EMOJI = "😀"; // U+1F600, zwei UTF-16-Code-Units, ein Code-Point
+
+  test("initLineInputState zaehlt den Cursor in Code-Points", () => {
+    expect(initLineInputState(EMOJI)).toEqual({ value: EMOJI, cursor: 1 });
+    expect(initLineInputState(`${EMOJI}a`)).toEqual({ value: `${EMOJI}a`, cursor: 2 });
+  });
+
+  test("Emoji eintippen bewegt den Cursor um einen Code-Point", () => {
+    const s: LineInputState = { value: "", cursor: 0 };
+    const { state } = reduceLineInput(s, EMOJI, key());
+    expect(state).toEqual({ value: EMOJI, cursor: 1 });
+  });
+
+  test("Backspace nach einem Emoji loescht das ganze Emoji, kein Lone Surrogate", () => {
+    const s: LineInputState = { value: EMOJI, cursor: 1 };
+    const { state } = reduceLineInput(s, "", key({ backspace: true }));
+    expect(state).toEqual({ value: "", cursor: 0 });
+    // Kein einzelnes Surrogat-Halbzeichen uebrig -- der String ist entweder
+    // leer oder besteht nur aus vollstaendigen Code-Points.
+    expect([...state.value].join("")).toBe(state.value);
+  });
+
+  test("Backspace zwischen zwei Emoji loescht genau eines, nicht ein halbes", () => {
+    const s: LineInputState = { value: `${EMOJI}${EMOJI}`, cursor: 1 };
+    const { state } = reduceLineInput(s, "", key({ backspace: true }));
+    expect(state).toEqual({ value: EMOJI, cursor: 0 });
+  });
+
+  test("rechte Pfeiltaste bewegt den Cursor um ein Emoji, nicht um eine Code-Unit", () => {
+    const s: LineInputState = { value: `${EMOJI}x`, cursor: 0 };
+    const { state } = reduceLineInput(s, "", key({ rightArrow: true }));
+    expect(state.cursor).toBe(1);
+  });
+
+  test("End springt hinter das letzte Emoji, nicht hinter dessen erste Code-Unit", () => {
+    const s: LineInputState = { value: `a${EMOJI}`, cursor: 0 };
+    const { state } = reduceLineInput(s, "", key({ end: true }));
+    expect(state.cursor).toBe(2);
+  });
+});
