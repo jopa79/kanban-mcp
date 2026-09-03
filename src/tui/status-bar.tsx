@@ -1,69 +1,57 @@
 // Statuszeile und Eingabe-Overlays
 import React from "react";
 import { Box, Text } from "ink";
-import TextInput from "ink-text-input";
+import { LineInput } from "./line-input.tsx";
 import type { Task } from "../core/types.ts";
 import { ACCENT } from "./theme.ts";
 
-interface AddInputProps {
-  value: string;
-  onChange: (val: string) => void;
+// 'initialValue' statt 'value'/'onChange': der Eingabewert lebt seit #50
+// (Plan .claude/plans/tui-input-flicker.md Schritt 2) in LineInput selbst,
+// nicht mehr in app.tsx -- ein Tastendruck rendert damit nur noch diese
+// Zeile, nicht das ganze Board. 'onCancel' ist optional und wird nur von
+// Aufrufern gebraucht, die bei Esc eine eigene Aufraeum-Aktion brauchen
+// (z.B. zurueck zur Detailansicht statt zum Board).
+interface LineInputProps {
+  initialValue?: string;
   onSubmit: (val: string) => void;
+  onCancel?: () => void;
 }
 
-export function AddInput({ value, onChange, onSubmit }: AddInputProps) {
+export function AddInput({ initialValue, onSubmit, onCancel }: LineInputProps) {
   return (
     <Box paddingX={1}>
       <Text color="#22c55e">Neuer Task: </Text>
-      <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
+      <LineInput initialValue={initialValue} onSubmit={onSubmit} onCancel={onCancel} />
       <Text color={ACCENT.muted}>  (Esc=Abbrechen)</Text>
     </Box>
   );
 }
 
-interface FilterInputProps {
-  value: string;
-  onChange: (val: string) => void;
-  onSubmit: (val: string) => void;
-}
-
-export function FilterInput({ value, onChange, onSubmit }: FilterInputProps) {
+export function FilterInput({ initialValue, onSubmit, onCancel }: LineInputProps) {
   return (
     <Box paddingX={1}>
       <Text color={ACCENT.notes}>Filter: </Text>
-      <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
+      <LineInput initialValue={initialValue} onSubmit={onSubmit} onCancel={onCancel} />
       <Text color={ACCENT.muted}>  (Enter=Anwenden, leer=Aufheben)</Text>
     </Box>
   );
 }
 
-interface TitleInputProps {
-  value: string;
-  onChange: (val: string) => void;
-  onSubmit: (val: string) => void;
-}
-
-export function TitleInput({ value, onChange, onSubmit }: TitleInputProps) {
+export function TitleInput({ initialValue, onSubmit, onCancel }: LineInputProps) {
   return (
     <Box paddingX={1}>
       <Text color={ACCENT.title}>Titel: </Text>
-      <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
+      <LineInput initialValue={initialValue} onSubmit={onSubmit} onCancel={onCancel} />
       <Text color={ACCENT.muted}>  (Enter=Speichern, Esc=Abbrechen)</Text>
     </Box>
   );
 }
 
-interface DescInputProps {
-  value: string;
-  onChange: (val: string) => void;
-  onSubmit: (val: string) => void;
-}
-
-export function DescInput({ value, onChange, onSubmit }: DescInputProps) {
+export function DescInput({ initialValue, onSubmit, onCancel }: LineInputProps) {
   return (
     <Box paddingX={1}>
       <Text color={ACCENT.notes}>Beschreibung: </Text>
-      <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
+      <LineInput initialValue={initialValue} onSubmit={onSubmit} onCancel={onCancel} />
       <Text color={ACCENT.muted}>  (Enter=Speichern, leer=Loeschen)</Text>
     </Box>
   );
@@ -82,22 +70,22 @@ export function DeleteConfirm({ task }: DeleteConfirmProps) {
 }
 
 // Export-Pfad Eingabe
-export function ExportInput({ value, onChange, onSubmit }: AddInputProps) {
+export function ExportInput({ initialValue, onSubmit, onCancel }: LineInputProps) {
   return (
     <Box paddingX={1}>
       <Text color="#22c55e">Export-Pfad: </Text>
-      <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
+      <LineInput initialValue={initialValue} onSubmit={onSubmit} onCancel={onCancel} />
       <Text color={ACCENT.muted}>  (Enter=Exportieren, Esc=Abbrechen)</Text>
     </Box>
   );
 }
 
 // Import ZIP-Pfad Eingabe
-export function ImportInput({ value, onChange, onSubmit }: AddInputProps) {
+export function ImportInput({ initialValue, onSubmit, onCancel }: LineInputProps) {
   return (
     <Box paddingX={1}>
       <Text color="#f59e0b">Import ZIP-Pfad: </Text>
-      <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
+      <LineInput initialValue={initialValue} onSubmit={onSubmit} onCancel={onCancel} />
       <Text color={ACCENT.muted}>  (Enter=Importieren, Esc=Abbrechen)</Text>
     </Box>
   );
