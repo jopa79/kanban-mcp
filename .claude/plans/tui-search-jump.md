@@ -10,7 +10,9 @@ Die Trefferliste aktualisiert sich bei jeder Taste. Enter springt mit dem
 Cursor auf den Treffer im Board. Esc bricht ab.
 
 Erfolgsbild ist Geschwindigkeit: einen bekannten Task schnell wiederfinden.
-Der bestehende Filter (`/`) grenzt das Board ein. Die Suche springt hin.
+Der bestehende Titel-Filter grenzt das Board ein (heute Taste `/`, nach
+#52 Taste `f`; je nach Merge-Reihenfolge gilt das eine oder andere, dieser
+Plan schreibt weiter `/`-Filter). Die Suche springt hin.
 Das sind zwei Werkzeuge, kein Ersatz.
 
 ## 2. Befund aus dem Code
@@ -77,7 +79,7 @@ Zwei Punkte, in denen `BoardPicker` KEIN Vorbild ist:
    `"archive"` fehlen dort heute. `useInputModes` läuft in `app.tsx` VOR
    den frühen Returns, deshalb reagieren dort zwei Handler (`q` im Archiv
    beendet die TUI, Esc hinterlässt "Filter aufgehoben"). Das ist ein
-   bestehender Bug, siehe GitHub Issue und Kanban-Task T6. `"search"`
+   bestehender Bug, siehe GitHub #53 und Kanban-Task T6. `"search"`
    MUSS im Frühausstieg stehen.
 
 ### 2.4 Cursor-Position des Treffers
@@ -131,8 +133,32 @@ Nicht durchsucht: `createdAt`, Labels, `assignedTo`, archivierte Tasks.
   einem Feld vorkommen (UND-Verknüpfung über Tokens).
 - Der Datumsfilter darf an jeder Stelle stehen. Stehen mehrere, gilt der
   letzte.
-- Ungültiger Datumswert (z.B. `faellig:morgen`): leere Liste plus Hinweis
-  "Ungueltiges Datum, erwartet JJJJ-MM oder JJJJ-MM-TT". Kein Fehler.
+- Der Datumswert hat drei Zustände, damit die Fehlermeldung beim Tippen
+  nicht blinkt. Die Regel ist die Anforderung selbst, keine Längenschwelle
+  (eine Schwelle "kürzer als sieben Zeichen" ließ `2026-09-` und
+  `2026-09-0` beim Tippen von `2026-09-03` als ungültig blinken und ließ
+  `2026-13` als Filter durch, siehe Review Runde 3):
+  - **prefix** (vollständiges gültiges Datum, Monat 01-12 und Tag 01-31
+    eingeschlossen): Filter aktiv. Regex für die vollständige Form:
+    `/^(\d{4})-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?$/`.
+  - **pending** (der Wert ist ein echtes Präfix mindestens eines gültigen
+    Datums, also auch leer, `2026-0`, `2026-09-`, `2026-09-0`): Filter
+    wird ignoriert, kein Hinweis, Liste zeigt die Texttreffer. `faellig:`
+    ohne Wert trifft also NICHT über `startsWith("")` alle Tasks mit Datum,
+    sondern ist schlicht noch kein Filter. Prüfung stellenweise: Ziffer an
+    Ziffernposition, Bindestrich an Position 5 und 8, Monatszehner 0 oder
+    1, Tageszehner 0 bis 3, plus die Bereichsprüfung, sobald eine Gruppe
+    vollständig ist. Keine Monster-Regex.
+  - **invalid** (kann kein gültiges Datum mehr werden, z.B. `morgen`,
+    `2026-13`, `2026-09-32`, elf und mehr Zeichen): leere Liste plus
+    Hinweis "Ungueltiges Datum, erwartet JJJJ-MM oder JJJJ-MM-TT". Kein
+    Fehler.
+  - Regressionsbedingung (T1): Für JEDES der elf Präfixe von `2026-09-03`,
+    von leer bis vollständig, ist `due.kind` nie `"invalid"`.
+- Die Eingabe wird am Anfang von `parseSearchQuery()` mit
+  `normalize("NFC")` vereinheitlicht, ebenso jeder `haystack` in
+  `buildSearchIndex()`. Sonst trifft ein eingefügtes `fällig:` in NFD das
+  Präfix nicht, und ein NFD-Titel trifft einen NFC-Suchtext nicht.
 - Leere Eingabe: alle Tasks in Board-Reihenfolge. So dient `g` auch als
   reine Sprungliste.
 
@@ -142,7 +168,15 @@ Nicht durchsucht: `createdAt`, Labels, `assignedTo`, archivierte Tasks.
 - Zeile je Treffer: Spaltenname in Spaltenfarbe (`getColumnColor`), Kurz-ID
   (8 Zeichen, `ACCENT.muted`), Titel, `dueDate` falls gesetzt.
 - Waisen zeigen den Namen der Sammelspalte ("⚠ Ohne Spalte").
-- Cursor: inverse Zeile, wie `BoardPickerList`.
+- Cursor-Zeile: sichtbares Zeichen `> ` am Zeilenanfang PLUS inverse
+  Darstellung. Bewusst nicht `▸`: das Zeichen markiert in
+  `board-picker.tsx` das AKTUELLE Board, nicht den Cursor, und soll in
+  derselben TUI nicht zwei Bedeutungen haben. Die inverse
+  Darstellung bleibt zusätzlich. Nicht nur inverse wie `BoardPickerList`: `renderToString()`
+  liefert kein ANSI, `cursor=0` und `cursor=1` ergeben dort denselben
+  String (gemessen im Review). Nur das sichtbare Zeichen ist testbar, und
+  es macht den Cursor auch für den Nutzer klarer. Zeilen ohne Cursor
+  bekommen zwei Leerzeichen, damit die Spalten bündig bleiben.
 - Scroll-Fenster hält den Cursor sichtbar. `calcScrollWindow()` aus
   `board-view.tsx` wird exportiert und wiederverwendet.
 - Kein Treffer: "Keine Treffer".
@@ -191,8 +225,8 @@ Gespeicherte Suchen, Kalender-Picker, Treffer pro Spalte, Suche über
 | `src/tui/board-view.tsx` | `calcScrollWindow` exportieren. Sonst unverändert. |
 | `src/tui/use-input-modes.ts` | `Mode` um `"search"` erweitern. Im Board-Block: `if (input === "g") { setMode("search"); }`. Im Frühausstieg der Texteingabe-Modi `"search"` ergänzen, sonst reagieren zwei Handler. |
 | `src/tui/app.tsx` | Import, `if (mode === "search") return <SearchView .../>` neben dem BoardPicker-Zweig, `handleSearchSelect`, `handleSearchCancel`. Maximal +12 Zeilen. |
-| `src/tui/help-view.tsx` | Eintrag `{ key: "g", desc: "Task suchen und hinspringen (goto)" }` nach `/`. |
-| `src/tui/status-bar.tsx` | `f=Suche` in der Fußzeile nach `/=Filter`. Die Zeile hat rund 122 Zeichen und bricht bei 80 Spalten schon heute um. Im selben Zug kürzen, z.B. `a=Arch.  A=Archiv` zu `a/A=Archiv` und `E=Export  I=Import` zu `E/I=Export/Import`, damit die Zeile mit `f=Suche` nicht länger wird als heute. |
+| `src/tui/help-view.tsx` | Eintrag `{ key: "g", desc: "Task suchen und hinspringen (goto)" }` direkt nach dem Filter-Eintrag (nach #52 Taste `f`). |
+| `src/tui/status-bar.tsx` | `g=Suche` in der Fußzeile direkt nach dem Filter-Eintrag (nach #52 `f=Filter`). Die Zeile hat rund 122 Zeichen und bricht bei 80 Spalten schon heute um. Im selben Zug kürzen, z.B. `a=Arch.  A=Archiv` zu `a/A=Archiv` und `E=Export  I=Import` zu `E/I=Export/Import`, damit die Zeile mit `g=Suche` nicht länger wird als heute. |
 | `tests/search-query.test.ts` | NEU. |
 | `tests/search-view.test.tsx` | NEU. `renderToString` von `SearchResultList`. |
 | `tests/tui-search.test.ts` | NEU. Mount-Test mit Fake-TTY. |
@@ -203,8 +237,14 @@ Gespeicherte Suchen, Kalender-Picker, Treffer pro Spalte, Suche über
 // src/tui/search-query.ts
 export interface SearchQuery {
   textTerms: string[];          // bereits kleingeschrieben
-  duePrefix: string | null;     // "2026-09" oder "2026-09-03"
-  invalidDue: string | null;    // roher Wert, wenn Format falsch
+  // Drei Zustaende, siehe Abschnitt 3 "Syntax": kein/unvollstaendiger
+  // Datumsfilter wird ignoriert, nur ein vollstaendiger filtert, nur ein
+  // unrettbar ungueltiger zeigt den Hinweis.
+  due:
+    | { kind: "none" }
+    | { kind: "pending" }                 // "faellig:" oder "faellig:2026-0"
+    | { kind: "prefix"; value: string }   // "2026-09" oder "2026-09-03"
+    | { kind: "invalid"; raw: string };   // "morgen"
 }
 export function parseSearchQuery(raw: string): SearchQuery;
 
@@ -247,7 +287,7 @@ interface SearchResultListProps {
   inputState: LineInputState;
   hits: Task[];
   cursor: number;
-  invalidDue: string | null;
+  invalidDue: string | null;    // query.due.kind === "invalid" ? raw : null
   displayColumns: Column[];
   columns: Column[];
   maxVisible: number;
@@ -311,6 +351,7 @@ Kanban-Tasks (Spalte Todo):
 | T3 | c-0cb4BZbaq3 |
 | T4 | cjAXi0FyWH_O |
 | T5 | D8jcp_85hnOE |
+| T6 | YoXzpoxePXdx (GitHub #53) |
 
 ### T1: Query-Parser und Suche als reine Funktionen
 
@@ -320,16 +361,24 @@ Komplexität: S. Blockiert von: nichts. Parallelisierbar mit: T2.
 - `tests/search-query.test.ts`, Stil wie `tests/line-input.test.ts`:
   - `parseSearchQuery`: leer, nur Text, `faellig:2026-09 Kanban`,
     `Kanban faellig:2026-09-03`, `fällig:`-Schreibweise, zwei Datumstoken
-    (letztes gilt), ungültiger Wert setzt `invalidDue`, Großschreibung
-    wird normalisiert, mehrere Leerzeichen.
+    (letztes gilt), ungültiger Wert ergibt `due.kind === "invalid"`,
+    `faellig:` ohne Wert, `faellig:2026-0`, `faellig:2026-09-` und
+    `faellig:2026-09-0` ergeben `"pending"`,
+    `faellig:2026-09` und `faellig:2026-09-03` ergeben `"prefix"`,
+    `faellig:2026-13`, `faellig:2026-09-32` und `faellig:2026-13-99`
+    ergeben `"invalid"`, Schleife über alle elf Präfixe von `2026-09-03`
+    mit `expect(due.kind).not.toBe("invalid")`, Großschreibung wird
+    normalisiert, mehrere Leerzeichen, NFD-Eingabe `fällig:2026-09` wird
+    als Datumsfilter erkannt.
   - `buildSearchIndex`: Notizen werden nur für `hasNotes === true`
     geladen (Loader-Aufrufe zählen), `null`-Description stört nicht,
     `hasNotes === true` mit Loader-Ergebnis `null` (Datei fehlt) stört
     nicht, Notiz länger als `NOTES_INDEX_LIMIT` wird gekappt.
   - `matchesQuery`: Treffer in Titel, Beschreibung, Notizen, voller ID,
     Kurz-ID; `#42` im Titel; zwei Texttoken UND; Datum und Text UND;
-    `dueDate: null` mit Datumsfilter trifft nie; `invalidDue` trifft nie;
-    leere Query trifft alles.
+    `dueDate: null` mit Datumsfilter trifft nie; `"invalid"` trifft nie;
+    `"pending"` filtert nicht (Task ohne `dueDate` trifft über den Text);
+    leere Query trifft alles; NFD-Titel trifft NFC-Suchtext.
   - `searchTasks`: Reihenfolge folgt `displayColumns`; Waise landet bei der
     Sammelspalte am Ende.
   - `locateTask`: Task in zweiter Spalte, dritte Zeile; Waise → Index der
@@ -360,7 +409,12 @@ Komplexität: M. Blockiert von: T1, T2.
   Abschnitt 4.
 - `tests/search-view.test.tsx` mit `renderToString` (Muster:
   `tests/board-picker.test.tsx`): leere Liste zeigt "Keine Treffer";
-  Hinweis bei `invalidDue`; Spaltenname und Kurz-ID erscheinen; Cursor-Zeile;
+  Hinweis bei `invalidDue`; Spaltenname und Kurz-ID erscheinen; die
+  Cursor-Zeile beginnt mit `startsWith("> ")`, die anderen mit
+  `startsWith("  ")` -- Zeilenanfang prüfen, nicht bloßes Vorkommen von
+  `>` (ein Task-Titel kann selbst ein `>` enthalten, z.B. aus einer
+  Statusmeldung wie "Backlog -> Todo"; nur das sichtbare Zeichen ist per
+  `renderToString` prüfbar, inverse Darstellung nicht);
   mehr Treffer als `maxVisible` zeigt Scroll-Indikator.
 
 Nachweis: `bun test` grün. `wc -l src/tui/app.tsx` maximal 444.
@@ -395,7 +449,11 @@ Nachweis: `bun test` grün.
 
 ### T5: `app.tsx` unter die 420-Zeilen-Grenze bringen
 
-Komplexität: S. Blockiert von: T3 (sonst Merge-Konflikt). Eigener Branch,
+Komplexität: S. Blockiert von: nichts, wenn T5 sequenziell VOR T3 läuft
+(reine Verschiebung, unabhängig vom Feature). Läuft T5 parallel zu T3,
+kollidieren beide in `app.tsx`. Empfehlung: T5 zuerst, dann liegt
+`app.tsx` nach dem Feature unter der Grenze statt 24 Zeilen darüber. Die
+Reihenfolge entscheidet der Teamlead. Eigener Branch,
 eigener PR. Nicht Teil des Features, aber Pflicht laut CLAUDE.md
 ("Dateien über die harte Grenze wachsen lassen ohne Refactoring-Task").
 
@@ -406,7 +464,7 @@ bleibt in `app.tsx`, wie beim Schnitt von `use-input-modes.ts`.
 
 ### T6: Doppel-Handler in Archiv und Board-Picker (bestehender Bug)
 
-Komplexität: XS. Blockiert von: nichts. Eigener Branch, eigener PR. Nicht
+Komplexität: XS. Blockiert von: nichts. GitHub #53, Kanban YoXzpoxePXdx. Eigener Branch, eigener PR. Nicht
 Teil des Features. Gefunden im Review dieses Plans.
 
 `"archive"` und `"board-picker"` fehlen im Frühausstieg von
@@ -419,11 +477,13 @@ Mount-Test: `A`, dann `q`, TUI läuft weiter und zeigt das Board.
 
 - `bun test` grün.
 - `bun run src/index.ts tui` in tmux: `g`, "kanban" tippen, Liste
-  filtert live, kein Flackern, Enter setzt den Cursor, `/`-Filter ist
-  danach aufgehoben.
+  filtert live, kein Flackern, Enter setzt den Cursor, der Titel-Filter
+  (Taste `/`, nach #52 Taste `f`) ist danach aufgehoben.
+- `faellig:2026-0` tippen: kein Hinweis, Liste bleibt. `faellig:morgen`:
+  Hinweis "Ungueltiges Datum". Cursor-Zeile trägt `>`.
 - `g` auf Board mit Waise: Waise erscheint mit "⚠ Ohne Spalte", Enter
   springt in die Sammelspalte.
-- `?` zeigt den neuen Eintrag, Fußzeile zeigt `f=Suche`.
+- `?` zeigt den neuen Eintrag, Fußzeile zeigt `g=Suche`.
 
 ## 8. Entscheidungen von JoPa (2026-09-03)
 
@@ -441,6 +501,30 @@ Alle drei Punkte sind entschieden. Keine offenen Fragen mehr.
   Begrenzung bringt `ESC[2J` zurück) und Blocker B (`useRef(f())` baut den
   Index pro Render). Beide gemessen. Eingearbeitet in Abschnitte 2.2, 2.3,
   2.4, 3, 4, 5, T1, T2, T4 und neuer T6.
+- 2026-09-03, devils-advocate Runde 2: NEEDS WORK knapp. Cursor-Test per
+  `renderToString` unmöglich (kein ANSI im Rückgabewert), leerer
+  Datumswert traf alles, Hinweis blinkte beim Tippen, NFC fehlte, T5
+  hinter T3. Eingearbeitet: sichtbares Cursor-Zeichen `>`, drei
+  Datumszustände `none`/`pending`/`prefix`/`invalid`, NFC-Normalisierung,
+  T5 als Empfehlung vor T3, Filtertaste mit #52-Hinweis.
+- 2026-09-03, devils-advocate Runde 3: NEEDS WORK, nur Datumsregel. Die
+  Längenschwelle widersprach zwei T1-Fällen (`2026-13` wurde prefix) und
+  ließ `2026-09-` und `2026-09-0` blinken. Eingearbeitet: Regel "pending =
+  Präfix eines gültigen Datums, prefix = vollständig mit Bereichsprüfung",
+  Regex für die vollständige Form, Schleifen-Test über elf Präfixe.
+  Cursor-Zeichen von `▸` auf `> ` geändert (Doppelbedeutung mit
+  BoardPicker).
+- 2026-09-03, devils-advocate Runde 4: **PASS mit Auflage.** Datumsregel
+  selbst durchgerechnet, alle elf Präfixe von "2026-09-03" landen auf
+  `pending` oder `prefix`, kein `invalid` mehr dazwischen. Auflage (vom
+  Teamlead direkt eingearbeitet, keine weitere Runde nötig): T3-Testtext
+  prüft `startsWith("> ")` gegen `startsWith("  ")`, nicht bloßes
+  Vorkommen von `>` -- ein Task-Titel kann selbst ein `>` enthalten (z.B.
+  aus einer Statusmeldung wie "Backlog -> Todo"). Zwei milde Hinweise ohne
+  Auflage: einstellige Monate/Tage (`faellig:2026-9`) sind bewusst
+  `invalid`, konsistent mit dem dokumentierten Format; Prüfreihenfolge
+  `prefix` vor `pending` ist implizit korrekt, T1 deckt beide Fälle
+  einzeln ab. Damit ist der Plan freigegeben.
 
 ## Nachtrag (2026-09-03): Taste geändert von "f" auf "g"
 
