@@ -108,9 +108,14 @@ kanban move <id> in-progress --by backend
 kanban add "Task Titel" -p high --due 2026-08-01
 kanban update <id> -p low --due 2026-12-25
 
-# Task aendern / loeschen
+# Task aendern / loeschen / einzeln abrufen
 kanban update <id> -t "Neuer Titel"
+kanban get <id>              # Einzelner Task, --json fuer maschinenlesbar
 kanban delete <id>
+
+# Notizen im Editor oeffnen ($EDITOR/$VISUAL, Default vi). Legt die Datei
+# an, falls sie noch nicht existiert -- entspricht der TUI-Taste 'e'
+kanban note <id>
 
 # Board-Status (Spalten, Waisen, Groesse der Transitions-Historie)
 kanban status
@@ -122,6 +127,12 @@ kanban migrate --yes
 kanban archive              # Done-Tasks archivieren
 kanban restore <id>         # Wiederherstellen
 kanban purge --confirm      # Archiv loeschen
+
+# Board als ZIP exportieren/importieren (board.json + Notes) --
+# entspricht den TUI-Tasten 'E'/'I'
+kanban export [pfad]              # Default: ./kanban-export-{datum}.zip
+kanban import <zip-pfad>          # Verweigert sich bei bestehendem Board
+kanban import <zip-pfad> --force  # ueberschreibt ein bestehendes Board
 ```
 
 ## Mehrere Boards
@@ -319,8 +330,8 @@ statt Pfad und `bun run` auch direkt `"command": "kanban", "args": ["mcp"]`.
 | `kanban_restore_task` | Archivierten Task wiederherstellen |
 | `kanban_purge_archive` | Archiv permanent loeschen |
 | `kanban_archive_stats` | Archiv-Statistiken |
-| `kanban_export_board` | Board als JSON exportieren |
-| `kanban_import_board` | Board aus JSON importieren |
+| `kanban_export_board` | Board als ZIP exportieren (board.json + Notes) |
+| `kanban_import_board` | Board aus ZIP importieren |
 
 **`reportedBy`** (seit 0.2.0, Breaking Change): die vier oben markierten
 Tools verlangen den Rollennamen des aufrufenden Agents (`planer`, `backend`,
