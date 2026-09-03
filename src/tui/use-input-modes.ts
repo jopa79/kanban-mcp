@@ -236,7 +236,7 @@ export function useInputModes(args: UseInputModesArgs): void {
     if (input === "n") { setMode("add"); }
     if (input === "x" && selectedTask) { setMode("confirm-delete"); }
     if (input === "a" && selectedTask) { board.archiveTask(selectedTask.id); setStatusMsg(`"${selectedTask.title}" archiviert`); setSelectedRow(Math.max(0, selectedRow - 1)); }
-    if (input === "/") { setMode("filter"); }
+    if (input === "f") { setMode("filter"); }
     // Sprung-Suchmodus (#51, "goto") -- im Verschiebe-Modus unerreichbar,
     // der Block 'if (moving && selectedTask)' oben kehrt vorher zurueck
     // (Plan Abschnitt 2.4, gewollt).

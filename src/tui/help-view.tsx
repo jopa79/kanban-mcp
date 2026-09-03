@@ -16,7 +16,7 @@ const SHORTCUTS = [
   { key: "E", desc: "Board als ZIP exportieren" },
   { key: "I", desc: "Board aus ZIP importieren" },
   { key: "B", desc: "Zwischen registrierten Boards wechseln" },
-  { key: "/", desc: "Tasks nach Titel filtern" },
+  { key: "f", desc: "Tasks nach Titel filtern" },
   { key: "g", desc: "Task suchen und hinspringen (goto)" },
   { key: "Esc", desc: "Filter aufheben / Zurueck" },
   { key: "r", desc: "Board neu laden" },
