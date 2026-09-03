@@ -32,6 +32,13 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   Detailansicht, Esc bricht ab. Neu: `src/tui/search-view.tsx`
   (`SearchResultList`/`SearchView`, Suchindex per Lazy-Init aus T1/T2). `?`
   zeigt den neuen Eintrag, die Statuszeile nennt `g=Suche`.
+- **Mount-Regressionstests fuer den Sprung-Suchmodus** (#51, T4). Neu:
+  `tests/tui-search.test.ts` — Fake-TTY-Mounts der echten `<App>` (Muster:
+  `tests/tui-input-drop.test.ts`/`tests/tui-render.test.ts`) fuer Oeffnen/
+  Tippen/Notiz-Treffer/Datumsfilter/Enter/Esc/Kein-Treffer sowie einen
+  Flacker-Schutz-Test mit voller Trefferliste (`rows: 24`, `ESC[2J` bleibt
+  aus, Blocker A aus dem Review) und eine Regressionsabsicherung, dass der
+  globale Board-Handler im Suchmodus nicht mitlaeuft.
 
 ### Changed
 
