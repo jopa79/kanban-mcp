@@ -34,6 +34,14 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   eine eigene Testdatei. Reine Verschiebung ohne Verhaltensaenderung;
   `use-board.ts` liegt danach bei 285 Zeilen.
 
+- **Die Detail-Handler der TUI liegen jetzt in `src/tui/use-detail-handlers.ts`.**
+  `app.tsx` lag bei 432 Zeilen, ueber der 420-Zeilen-Stoppgrenze aus den
+  Task-Notes. Die Save/Cancel-Handler der Detailansicht (Notizen, Tags,
+  Prioritaet, Titel, Beschreibung) sind der abgrenzbare Block — analog zum
+  bereits bestehenden Schnitt `use-input-modes.ts`. Reine Verschiebung ohne
+  Verhaltensaenderung, State bleibt in `app.tsx`; die Datei liegt danach bei
+  363 Zeilen.
+
 - **Reservierte Spalten-IDs werden abgelehnt.** `config.json` darf die ID der
   virtuellen Waisen-Sammelspalte (`__orphan__`) nicht fuer eine echte Spalte
   vergeben — `validateColumnConfig()` bricht sonst mit einer verstaendlichen
