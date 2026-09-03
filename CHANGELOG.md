@@ -7,6 +7,8 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-03
+
 ### Added
 
 - **`kanban_reorder_task`** — neues MCP-Tool, das einen Task innerhalb seiner
@@ -42,6 +44,10 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Changed
 
+- **Titel-Filter von `/` auf `f` umgestellt** (GitHub #52). `/` wurde durch
+  den neuen Sprung-Suchmodus (#51, Taste `g`) frei, `f` blieb dabei
+  unbelegt und ist die naheliegendere Mnemonic ("filter"). Hilfe-Text und
+  Fusszeile zeigen die neue Taste.
 - **`LineInputDisplay` aus `LineInput` herausgeloest, `calcScrollWindow` aus
   `board-view.tsx` exportiert.** Vorarbeit fuer den geplanten Sprung-
   Suchmodus (#51, T2): dessen Trefferliste braucht dieselbe Cursor-
@@ -150,6 +156,39 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   ob ein interaktives Terminal verfuegbar ist, und bricht sonst mit einer
   verstaendlichen deutschen Meldung ab, statt den kaputten Ink-Pfad zu
   durchlaufen (Kanban-Task DUFjVlN6vOE-, GitHub #37).
+- **Die TUI flackert nicht mehr beim Tippen, und Tastendruecke gehen nicht
+  mehr verloren** (GitHub #50). `app.tsx` begrenzte die Wurzel-Box nicht auf
+  unter die Terminalhoehe, Ink fiel deshalb bei jedem Frame in seinen
+  Vollbild-Pfad und schrieb ein Terminal-Clear. Gleichzeitig lag der
+  Eingabewert von `ink-text-input` in `app.tsx`, jeder Tastendruck rendere
+  damit das gesamte Board (gemessen 9ms Schnitt, 23ms max) — bei schnellem
+  Tippen erreichte eine Taste noch den vorherigen, veralteten `useInput()`-
+  Handler und ueberschrieb das zuvor getippte Zeichen. Gemessen: bei 1ms
+  Tastenabstand kamen nur 23 von 27 Zeichen an, in falscher Reihenfolge.
+  `height={termRows - 1}` haelt Ink im Diff-Renderpfad, eine neue
+  `LineInput`-Komponente (`src/tui/line-input.tsx`) haelt Wert und Cursor in
+  einem Ref statt in `app.tsx` — ersetzt `ink-text-input`, das damit als
+  Dependency entfaellt. Nach dem Fix: 27 von 27 Zeichen, auch bei 1ms.
+- **Emoji im Eingabefeld zerstoerten Text und liessen den Cursor
+  verschwinden** (GitHub #54, gefunden im Review von #50). `reduceLineInput`
+  und `reduceTextArea` rechneten Cursor-Position in UTF-16-Code-Units statt
+  in Unicode-Code-Points — ein Emoji ausserhalb der Basic Multilingual Plane
+  besteht aus zwei Code-Units, aber einem Code-Point. Ein Backspace direkt
+  danach zerlegte das Surrogatpaar in ein ungueltiges Lone-Surrogate-Zeichen,
+  das bis in die SQLite-Datenbank durchreichen konnte; mit einem Emoji im
+  Wert wurde ausserdem gar kein Cursor mehr gezeichnet. Beide Reducer
+  rechnen jetzt auf einem Code-Point-Array. Bewusst nicht behoben:
+  Grapheme-Cluster (NFD-Umlaute, mehrteilige ZWJ-Emoji) — dort wirkt
+  Backspace optisch wirkungslos, erzeugt aber keinen kaputten Text.
+- **`q` im Archiv beendete die gesamte TUI statt zum Board zurueckzugehen**
+  (GitHub #53, gefunden im Review von #50). Der globale Tastatur-Handler in
+  `use-input-modes.ts` lief auch in den Modi "archive" und "board-picker"
+  weiter mit, obwohl beide Ansichten ihr eigenes, vollstaendiges
+  `useInput()` haben — sein `q` ruft `exit()` auf, bevor `ArchiveView`s
+  eigenes `q` ueberhaupt zum Zug kommt. Esc hinterliess ausserdem ein
+  stehen gebliebenes "Filter aufgehoben", und Pfeiltasten verschoben
+  zusaetzlich den verdeckten Board-Cursor. Beide Modi stehen jetzt im
+  Fruehausstieg des globalen Handlers, wie die uebrigen Vollbild-Ansichten.
 
 ## [0.2.0] - 2026-07-29
 

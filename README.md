@@ -4,7 +4,7 @@ Terminal-basiertes Kanban Board mit MCP-Server fuer Claude Code.
 
 - **CLI** — Alle Board-Operationen direkt im Terminal
 - **TUI** — Interaktive Board-Ansicht mit Tastatur-Navigation
-- **MCP Server** — 18 Tools fuer Claude Code Integration
+- **MCP Server** — 19 Tools fuer Claude Code Integration
 - **Skills** — Automatisierte Review-Tests (Playwright + VHS)
 - **SQLite** — Pro-Projekt Datenbank in `.kanban/`
 
@@ -219,7 +219,8 @@ kanban tui
 | E | Board als ZIP exportieren |
 | I | Board aus ZIP importieren |
 | B | Zwischen registrierten Boards wechseln |
-| / | Tasks nach Titel filtern |
+| f | Tasks nach Titel filtern |
+| g | Task suchen und hinspringen (Volltext, ID, `faellig:JJJJ-MM[-TT]`) |
 | Esc | Filter aufheben / Zurueck |
 | r | Board neu laden |
 | s | Nach Prioritaet sortieren (An/Aus, reiner Ansichtsmodus) |
@@ -307,6 +308,7 @@ statt Pfad und `bun run` auch direkt `"command": "kanban", "args": ["mcp"]`.
 | `kanban_get_task` | Task per ID abrufen (inkl. `isBlocked`, `dependsOn`, `dependents`) |
 | `kanban_list_tasks` | Tasks auflisten (Filter, u.a. `priority`, `overdue`) |
 | `kanban_move_task` | Task verschieben (Pflichtfeld `reportedBy`) |
+| `kanban_reorder_task` | Task innerhalb seiner Spalte eine Position rauf/runter schieben |
 | `kanban_update_task` | Task-Eigenschaften aendern (inkl. `priority`, `dueDate`) |
 | `kanban_delete_task` | Task loeschen |
 | `kanban_complete_task` | Task abschliessen (Pflichtfeld `reportedBy`, nur aus Review) |

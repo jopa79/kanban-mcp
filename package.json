@@ -1,6 +1,6 @@
 {
   "name": "kanban-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Terminal Kanban Board mit MCP-Server fuer Claude Code",
   "main": "src/index.ts",
   "module": "src/index.ts",
