@@ -13,6 +13,8 @@ import { PriorityPicker } from "./priority-picker.tsx";
 import { ArchiveView } from "./archive-view.tsx";
 import { DependencyView } from "./dependency-view.tsx";
 import { BoardPicker } from "./board-picker.tsx";
+import { SearchView } from "./search-view.tsx";
+import { locateTask } from "./search-query.ts";
 import { useBoard, isOrphanTask, resolveEffectiveSort } from "./use-board.ts";
 import { useInputModes, type Mode, type PendingOverride } from "./use-input-modes.ts";
 import { useDetailHandlers } from "./use-detail-handlers.ts";
@@ -184,6 +186,28 @@ export function App({ workingDir: initialWorkingDir }: AppProps) {
     setStatusMsg("");
   };
 
+  // Sprung-Suchmodus (#51, Taste "g"): 'locateTask' rechnet gegen den
+  // AKTUELLEN 'board.tasks', nicht gegen den Stand, den SearchView beim
+  // Mount bekam (Plan Abschnitt 2.4) -- der Filter wird aufgehoben, damit der
+  // Treffer sichtbar ist und eine Zeile hat (Entscheidung JoPa, Abschnitt 8).
+  const handleSearchSelect = (task: import("../core/types.ts").Task) => {
+    const loc = locateTask(task.id, board.tasks, board.displayColumns, board.columns);
+    setFilterText("");
+    if (loc) {
+      setSelectedCol(loc.col);
+      setSelectedRow(loc.row);
+      setStatusMsg(`Sprung: "${task.title}"`);
+    } else {
+      setStatusMsg("Task nicht mehr auf dem Board");
+    }
+    setMode("board");
+  };
+
+  const handleSearchCancel = () => {
+    setMode("board");
+    setStatusMsg("");
+  };
+
   const detailModes: Mode[] = ["detail", "edit-notes", "edit-tags", "edit-title", "edit-description", "edit-deps", "edit-priority"];
   if (detailModes.includes(mode) && detailTask) return (
     <Box flexDirection="column">
@@ -273,6 +297,16 @@ export function App({ workingDir: initialWorkingDir }: AppProps) {
   if (mode === "help") return <HelpView />;
   if (mode === "board-picker") return (
     <BoardPicker currentPath={workingDir} onSelect={handleBoardSelect} onCancel={handleBoardCancel} />
+  );
+  if (mode === "search") return (
+    <SearchView
+      tasks={board.tasks}
+      displayColumns={board.displayColumns}
+      columns={board.columns}
+      kanbanDir={board.kanbanDir}
+      onSelect={handleSearchSelect}
+      onCancel={handleSearchCancel}
+    />
   );
 
   const handleExportSubmit = async (val: string) => {

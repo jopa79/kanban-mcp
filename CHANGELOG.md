@@ -23,6 +23,15 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   waechst. Neu sind `TransitionService.count()` und `transitionCount` in
   `getStatus()`; das Feld erscheint additiv auch in `kanban status --json` und
   im MCP-Tool `kanban_status`.
+- **Sprung-Suchmodus in der TUI, Taste `g`** (GitHub #51, T3,
+  [Plan](.claude/plans/tui-search-jump.md)). `g` oeffnet eine Vollbild-Suche
+  ueber Titel, Beschreibung, Notizen und Task-ID; die Trefferliste
+  aktualisiert sich bei jeder Taste, `faellig:JJJJ-MM[-TT]` filtert zusaetzlich
+  nach Faelligkeitsdatum. Enter setzt den Board-Cursor auf den Treffer (hebt
+  einen aktiven Titel-Filter auf) und oeffnet NICHT automatisch die
+  Detailansicht, Esc bricht ab. Neu: `src/tui/search-view.tsx`
+  (`SearchResultList`/`SearchView`, Suchindex per Lazy-Init aus T1/T2). `?`
+  zeigt den neuen Eintrag, die Statuszeile nennt `g=Suche`.
 
 ### Changed
 
