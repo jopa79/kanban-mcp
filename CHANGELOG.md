@@ -26,6 +26,13 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Changed
 
+- **`LineInputDisplay` aus `LineInput` herausgeloest, `calcScrollWindow` aus
+  `board-view.tsx` exportiert.** Vorarbeit fuer den geplanten Sprung-
+  Suchmodus (#51, T2): dessen Trefferliste braucht dieselbe Cursor-
+  Darstellung und Scroll-Fenster-Logik, ohne `LineInput` als Komponente
+  einzubetten (eigene `useInput`-Registrierung wuerde kollidieren). Reine
+  Verschiebung/Export ohne Verhaltensaenderung.
+
 - **Die Verzeichnis-Beobachtung liegt jetzt in `src/tui/watch-board.ts`.**
   `use-board.ts` trug DB-Zugriff, Beobachtung und den React-Hook in einer Datei
   und lag bei 354 Zeilen, ueber dem Richtwert von 200–300. Der Watcher
