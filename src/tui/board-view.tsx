@@ -9,7 +9,10 @@ import { ORPHAN_COLUMN_ID } from "../core/types.ts";
 // Geschaetzte Hoehe pro Task-Karte (Titel + Meta + Borders)
 const CARD_HEIGHT = 4;
 // Overhead: App-Header + Spalten-Header + Spalten-Borders + Scroll-Indikatoren + StatusBar
-const LAYOUT_OVERHEAD = 8;
+// + 1 fuer die Reserve-Zeile aus app.tsx (height={termRows - 1}, siehe Plan
+// .claude/plans/tui-input-flicker.md Schritt 1) -- sonst ueberlaeuft die
+// Ausgabe knapp und Ink faellt trotzdem in den Vollbild-Pfad.
+const LAYOUT_OVERHEAD = 9;
 
 interface BoardViewProps {
   columns: Column[];

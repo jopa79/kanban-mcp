@@ -1,7 +1,7 @@
 // Abhaengigkeiten-Ansicht fuer einen Task
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import TextInput from "ink-text-input";
+import { LineInput } from "./line-input.tsx";
 import type { Task } from "../core/types.ts";
 import { ACCENT, getColumnColor } from "./theme.ts";
 
@@ -19,7 +19,6 @@ interface DependencyViewProps {
 export function DependencyView({ task, dependencies, dependents, onAdd, onRemove, onBack }: DependencyViewProps) {
   const [state, setState] = useState<DepsState>("list");
   const [cursor, setCursor] = useState(0);
-  const [addValue, setAddValue] = useState("");
 
   const allItems = dependencies;
 
@@ -42,7 +41,6 @@ export function DependencyView({ task, dependencies, dependents, onAdd, onRemove
 
     // a = Abhaengigkeit hinzufuegen
     if (input === "a") {
-      setAddValue("");
       setState("add-input");
       return;
     }
@@ -58,6 +56,15 @@ export function DependencyView({ task, dependencies, dependents, onAdd, onRemove
     if (val.trim()) {
       onAdd(val.trim());
     }
+    setState("list");
+  };
+
+  // Esc-Abbruch: der 'state === "add-input"'-Fruehausstieg oben liess Esc
+  // bisher komplett ungehandelt -- ink-text-input kannte selbst kein Esc
+  // (totes "Esc=Abbrechen" in der Statuszeile, gleiches Muster wie in
+  // status-bar.tsx, siehe #50). LineInputs onCancel bringt es jetzt zum
+  // Wirken.
+  const handleAddCancel = () => {
     setState("list");
   };
 
@@ -108,7 +115,7 @@ export function DependencyView({ task, dependencies, dependents, onAdd, onRemove
       {state === "add-input" && (
         <Box paddingTop={1}>
           <Text color={ACCENT.notes}>Task-ID: </Text>
-          <TextInput value={addValue} onChange={setAddValue} onSubmit={handleAddSubmit} />
+          <LineInput onSubmit={handleAddSubmit} onCancel={handleAddCancel} />
           <Text color={ACCENT.muted}>  (Enter=Hinzufuegen, Esc=Abbrechen)</Text>
         </Box>
       )}

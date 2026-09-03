@@ -55,7 +55,6 @@ export interface UseInputModesArgs {
   setMoving: (moving: boolean) => void;
   setFilterText: (text: string) => void;
   setDetailTask: (task: Task | null) => void;
-  setInputValue: (value: string) => void;
   setPendingOverride: (pending: PendingOverride | null) => void;
   setArchivedTasks: (tasks: Task[]) => void;
   setSortByPriority: (value: boolean) => void;
@@ -70,7 +69,7 @@ export function useInputModes(args: UseInputModesArgs): void {
     detailTask, importPath, pendingOverride, selectedTask, currentColTaskCount,
     sortByPriority,
     setMode, setStatusMsg, setSelectedCol, setSelectedRow, setMoving,
-    setFilterText, setDetailTask, setInputValue, setPendingOverride, setArchivedTasks,
+    setFilterText, setDetailTask, setPendingOverride, setArchivedTasks,
     setSortByPriority,
   } = args;
 
@@ -95,10 +94,9 @@ export function useInputModes(args: UseInputModesArgs): void {
   };
 
   useInput((input, key) => {
-    // Esc in Export/Import-Pfadeingabe: abbrechen
-    if (key.escape && (mode === "export-path" || mode === "import-path")) {
-      setMode("board"); setStatusMsg(""); return;
-    }
+    // Esc in Export/Import-Pfadeingabe: LineInput ruft dafuer selbst
+    // onCancel auf (app.tsx: handleExportCancel/handleImportCancel) -- kein
+    // zweiter Handler noetig (#50, Plan Schritt 2).
 
     // Import-Bestaetigungsdialog
     if (mode === "import-confirm") {
@@ -139,11 +137,9 @@ export function useInputModes(args: UseInputModesArgs): void {
         setMode("edit-tags");
       }
       if (input === "T" && detailTask) {
-        setInputValue(detailTask.title);
         setMode("edit-title");
       }
       if (input === "b" && detailTask) {
-        setInputValue(detailTask.description ?? "");
         setMode("edit-description");
       }
       if (input === "p" && detailTask) {
@@ -229,10 +225,10 @@ export function useInputModes(args: UseInputModesArgs): void {
         () => setStatusMsg("-> Done"),
       );
     }
-    if (input === "n") { setInputValue(""); setMode("add"); }
+    if (input === "n") { setMode("add"); }
     if (input === "x" && selectedTask) { setMode("confirm-delete"); }
     if (input === "a" && selectedTask) { board.archiveTask(selectedTask.id); setStatusMsg(`"${selectedTask.title}" archiviert`); setSelectedRow(Math.max(0, selectedRow - 1)); }
-    if (input === "/") { setInputValue(""); setMode("filter"); }
+    if (input === "/") { setMode("filter"); }
     if (input === "r") { board.refresh(); setStatusMsg("Aktualisiert"); }
     // P2-3: reiner Ansichtsmodus, toggelt nur die Anzeige-Sortierung -- der
     // eigentliche Verzicht auf Sortierung waehrend des Verschiebens passiert
@@ -246,12 +242,11 @@ export function useInputModes(args: UseInputModesArgs): void {
     }
     if (input === "?") { setMode("help"); }
     if (input === "A") { setArchivedTasks(board.listArchived()); setMode("archive"); }
-    if (input === "E") {
-      const date = new Date().toISOString().slice(0, 10);
-      setInputValue(`./kanban-export-${date}.zip`);
-      setMode("export-path");
-    }
-    if (input === "I") { setInputValue(""); setMode("import-path"); }
+    // Export-Vorbelegung (Datum im Dateinamen) wird jetzt beim Rendern von
+    // ExportInput in app.tsx berechnet, nicht mehr hier -- LineInput nimmt
+    // seine Vorbelegung nur beim eigenen Mount an (#50, Plan Schritt 2).
+    if (input === "E") { setMode("export-path"); }
+    if (input === "I") { setMode("import-path"); }
     // P3-3: Board-Auswahl oeffnen. Die Auswahl selbst (Registry laden, Guard
     // fuer Schema v2/fehlende Pfade) lebt in board-picker.tsx -- hier nur der
     // Moduswechsel, wie bei 'A'/'E'/'I' auch.

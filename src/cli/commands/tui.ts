@@ -68,5 +68,9 @@ export const tuiCommand = new Command("tui")
       process.exit(1);
     }
 
-    render(React.createElement(App, { workingDir }));
+    // incrementalRendering: Ink schreibt nur geaenderte Zeilen statt bei
+    // jedem Frame den kompletten Output neu -- reduziert die Ausgabe pro
+    // Tastendruck zusaetzlich zum Vollbild-Fix in app.tsx (siehe Plan
+    // .claude/plans/tui-input-flicker.md Schritt 1).
+    render(React.createElement(App, { workingDir }), { incrementalRendering: true });
   });

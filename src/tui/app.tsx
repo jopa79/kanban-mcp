@@ -40,7 +40,6 @@ export function App({ workingDir: initialWorkingDir }: AppProps) {
   const [selectedCol, setSelectedCol] = useState(INITIAL_SELECTED_COLUMN);
   const [selectedRow, setSelectedRow] = useState(0);
   const [statusMsg, setStatusMsg] = useState("");
-  const [inputValue, setInputValue] = useState("");
   const [filterText, setFilterText] = useState("");
   const [detailTask, setDetailTask] = useState<import("../core/types.ts").Task | null>(null);
   const [archivedTasks, setArchivedTasks] = useState<import("../core/types.ts").Task[]>([]);
@@ -115,7 +114,6 @@ export function App({ workingDir: initialWorkingDir }: AppProps) {
     setMoving,
     setFilterText,
     setDetailTask,
-    setInputValue,
     setPendingOverride,
     setArchivedTasks,
     setSortByPriority,
@@ -197,6 +195,41 @@ export function App({ workingDir: initialWorkingDir }: AppProps) {
     setMode("detail");
   };
 
+  // Esc-Abbruch fuer Titel/Beschreibung: die Statuszeile versprach schon
+  // vorher "(Esc=Abbrechen)", aber ink-text-input kannte kein Esc -- das war
+  // tot (siehe #50, Plan Schritt 2). LineInput bringt Esc jetzt tatsaechlich
+  // zum Wirken, deshalb hier nachgezogen, analog zu handleNoteCancel/
+  // handleTagsCancel.
+  const handleTitleCancel = () => {
+    setMode("detail");
+    setStatusMsg("");
+  };
+
+  const handleDescCancel = () => {
+    setMode("detail");
+    setStatusMsg("");
+  };
+
+  const handleAddCancel = () => {
+    setMode("board");
+    setStatusMsg("Abgebrochen");
+  };
+
+  const handleFilterCancel = () => {
+    setMode("board");
+    setStatusMsg("");
+  };
+
+  const handleExportCancel = () => {
+    setMode("board");
+    setStatusMsg("");
+  };
+
+  const handleImportCancel = () => {
+    setMode("board");
+    setStatusMsg("");
+  };
+
   // P3-3: Board wechseln. BoardPicker laesst nur 'ok'-Eintraege ueberhaupt an
   // onSelect durchkommen (siehe board-picker.tsx) -- diese Funktion muss den
   // Status also nicht nochmal pruefen. Die Zustaende der Board-Ansicht
@@ -247,16 +280,16 @@ export function App({ workingDir: initialWorkingDir }: AppProps) {
       )}
       {mode === "edit-title" && (
         <TitleInput
-          value={inputValue}
-          onChange={setInputValue}
+          initialValue={detailTask.title}
           onSubmit={handleTitleSave}
+          onCancel={handleTitleCancel}
         />
       )}
       {mode === "edit-description" && (
         <DescInput
-          value={inputValue}
-          onChange={setInputValue}
+          initialValue={detailTask.description ?? ""}
           onSubmit={handleDescSave}
+          onCancel={handleDescCancel}
         />
       )}
       {mode === "edit-deps" && (
@@ -355,7 +388,11 @@ export function App({ workingDir: initialWorkingDir }: AppProps) {
   };
 
   return (
-    <Box flexDirection="column" width="100%" height={termRows}>
+    // termRows - 1: bleibt die Ausgabe unter stdout.rows, faellt Ink nicht in
+    // seinen Vollbild-Pfad (ink.js: lastOutputHeight >= stdout.rows) und
+    // schreibt keinen ESC[2J ESC[3J bei jedem Frame -- siehe Plan
+    // .claude/plans/tui-input-flicker.md, Schritt 1.
+    <Box flexDirection="column" width="100%" height={termRows - 1}>
       {/* Header — fixiert */}
       <Box justifyContent="center" paddingY={0} flexShrink={0}>
         <Text bold color="#3b82f6"> KANBAN </Text>
@@ -375,11 +412,17 @@ export function App({ workingDir: initialWorkingDir }: AppProps) {
 
       {/* Footer — fixiert */}
       <Box flexDirection="column" flexShrink={0}>
-        {mode === "add" && <AddInput value={inputValue} onChange={setInputValue} onSubmit={handleAddSubmit} />}
-        {mode === "filter" && <FilterInput value={inputValue} onChange={setInputValue} onSubmit={handleFilterSubmit} />}
+        {mode === "add" && <AddInput onSubmit={handleAddSubmit} onCancel={handleAddCancel} />}
+        {mode === "filter" && <FilterInput onSubmit={handleFilterSubmit} onCancel={handleFilterCancel} />}
         {mode === "confirm-delete" && selectedTask && <DeleteConfirm task={selectedTask} />}
-        {mode === "export-path" && <ExportInput value={inputValue} onChange={setInputValue} onSubmit={handleExportSubmit} />}
-        {mode === "import-path" && <ImportInput value={inputValue} onChange={setInputValue} onSubmit={handleImportSubmit} />}
+        {mode === "export-path" && (
+          <ExportInput
+            initialValue={`./kanban-export-${new Date().toISOString().slice(0, 10)}.zip`}
+            onSubmit={handleExportSubmit}
+            onCancel={handleExportCancel}
+          />
+        )}
+        {mode === "import-path" && <ImportInput onSubmit={handleImportSubmit} onCancel={handleImportCancel} />}
         {mode === "import-confirm" && <ImportConfirm />}
         {mode === "confirm-override" && pendingOverride && <OverrideConfirm reason={pendingOverride.reason} />}
         <StatusBar message={statusMsg} />
