@@ -34,8 +34,13 @@ export interface LineInputState {
   cursor: number;
 }
 
+// Cursor als Code-Point-Index, nicht als UTF-16-Code-Unit-Index -- ein
+// Emoji ausserhalb der Basic Multilingual Plane (z.B. 😀, U+1F600) besteht
+// aus zwei Code-Units, aber einem Code-Point. Rechnete der Cursor in
+// Code-Units (frueher: 'initialValue.length'), landete er nach dem Tippen
+// eines solchen Emoji mitten im Surrogatpaar (gefunden im Review von #50).
 export function initLineInputState(initialValue: string): LineInputState {
-  return { value: initialValue, cursor: initialValue.length };
+  return { value: initialValue, cursor: [...initialValue].length };
 }
 
 export type LineInputAction = "none" | "submit" | "cancel";
@@ -44,6 +49,18 @@ export type LineInputAction = "none" | "submit" | "cancel";
 // ohne Renderer (siehe tests/line-input.test.ts). Gibt zusaetzlich zum
 // naechsten Zustand nur zurueck, OB submit/cancel ausgeloest werden soll;
 // ruft selbst keine Callbacks auf und bleibt damit eine reine Funktion.
+//
+// Rechnet durchgehend auf einem Code-Point-Array ('chars'), nicht auf
+// UTF-16-Indizes des Strings direkt (siehe initLineInputState-Kommentar).
+// Frueher zerlegte ein Backspace direkt NACH einem Emoji dessen
+// Surrogatpaar in ein einzelnes, ungueltiges Lone-Surrogate-Zeichen --
+// dieser kaputte Text konnte bis in die SQLite-Datenbank durchreichen.
+// Deckt Emoji als einzelnen Code-Point ab, NICHT Grapheme-Cluster
+// (z.B. Familien-Emoji aus mehreren Code-Points per ZWJ, oder ein
+// Buchstabe + Combining-Akzent in NFD-Normalform, wie ihn macOS bei
+// eingefuegten Dateipfaden liefert) -- das braeuchte Grapheme-Segmentierung
+// und ist bewusst nicht Teil dieses Fixes (kein kaputter Text, nur ein
+// Backspace, der optisch nichts zu tun scheint).
 export function reduceLineInput(
   state: LineInputState,
   input: string,
@@ -55,19 +72,21 @@ export function reduceLineInput(
   if (key.return) return { state, action: "submit" };
   if (key.escape) return { state, action: "cancel" };
 
+  const chars = [...state.value];
+
   if (key.leftArrow) {
     return { state: { ...state, cursor: Math.max(0, state.cursor - 1) }, action: "none" };
   }
   if (key.rightArrow) {
-    return { state: { ...state, cursor: Math.min(state.value.length, state.cursor + 1) }, action: "none" };
+    return { state: { ...state, cursor: Math.min(chars.length, state.cursor + 1) }, action: "none" };
   }
   if (key.home) return { state: { ...state, cursor: 0 }, action: "none" };
-  if (key.end) return { state: { ...state, cursor: state.value.length }, action: "none" };
+  if (key.end) return { state: { ...state, cursor: chars.length }, action: "none" };
 
   if (key.backspace || key.delete) {
     if (state.cursor === 0) return { state, action: "none" };
-    const value = state.value.slice(0, state.cursor - 1) + state.value.slice(state.cursor);
-    return { state: { value, cursor: state.cursor - 1 }, action: "none" };
+    chars.splice(state.cursor - 1, 1);
+    return { state: { value: chars.join(""), cursor: state.cursor - 1 }, action: "none" };
   }
 
   if (key.ctrl || key.meta || !input) {
@@ -78,8 +97,9 @@ export function reduceLineInput(
   // einmal). Zeilenumbrueche aus Paste entfernen -- LineInput ist einzeilig.
   const clean = input.replace(/[\r\n]/g, "");
   if (!clean) return { state, action: "none" };
-  const value = state.value.slice(0, state.cursor) + clean + state.value.slice(state.cursor);
-  return { state: { value, cursor: state.cursor + clean.length }, action: "none" };
+  const insertChars = [...clean];
+  chars.splice(state.cursor, 0, ...insertChars);
+  return { state: { value: chars.join(""), cursor: state.cursor + insertChars.length }, action: "none" };
 }
 
 interface LineInputProps {
@@ -90,10 +110,9 @@ interface LineInputProps {
   initialValue?: string;
   onSubmit: (value: string) => void;
   onCancel?: () => void;
-  mask?: string;
 }
 
-export function LineInput({ initialValue = "", onSubmit, onCancel, mask }: LineInputProps) {
+export function LineInput({ initialValue = "", onSubmit, onCancel }: LineInputProps) {
   const stateRef = useRef<LineInputState>(initLineInputState(initialValue));
   const [state, setState] = useState<LineInputState>(stateRef.current);
 
@@ -111,8 +130,7 @@ export function LineInput({ initialValue = "", onSubmit, onCancel, mask }: LineI
     else if (action === "cancel") onCancel?.();
   });
 
-  const shown = mask ? mask.repeat(state.value.length) : state.value;
-  const chars = [...shown];
+  const chars = [...state.value];
   const { cursor } = state;
 
   return (

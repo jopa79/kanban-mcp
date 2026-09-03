@@ -125,3 +125,41 @@ describe("reduceTextArea -- Esc", () => {
     expect(action).toBe("open-confirm");
   });
 });
+
+// Regressionstests fuer den Code-Point-Fix (gleicher Fund wie bei
+// LineInput, siehe tests/line-input.test.ts): ein Emoji ausserhalb der
+// Basic Multilingual Plane besteht aus zwei UTF-16-Code-Units, aber einem
+// Code-Point.
+describe("reduceTextArea -- Emoji (Code-Points statt Code-Units)", () => {
+  const EMOJI = "😀"; // U+1F600, zwei UTF-16-Code-Units, ein Code-Point
+
+  test("Emoji eintippen bewegt den Cursor um einen Code-Point", () => {
+    const s: TextAreaEditState = { lines: [""], row: 0, col: 0 };
+    const { state } = reduceTextArea(s, EMOJI, key());
+    expect(state).toEqual({ lines: [EMOJI], row: 0, col: 1 });
+  });
+
+  test("Backspace nach einem Emoji loescht das ganze Emoji, kein Lone Surrogate", () => {
+    const s: TextAreaEditState = { lines: [EMOJI], row: 0, col: 1 };
+    const { state } = reduceTextArea(s, "", key({ backspace: true }));
+    expect(state).toEqual({ lines: [""], row: 0, col: 0 });
+  });
+
+  test("Backspace zwischen zwei Emoji loescht genau eines, nicht ein halbes", () => {
+    const s: TextAreaEditState = { lines: [`${EMOJI}${EMOJI}`], row: 0, col: 1 };
+    const { state } = reduceTextArea(s, "", key({ backspace: true }));
+    expect(state).toEqual({ lines: [EMOJI], row: 0, col: 0 });
+  });
+
+  test("rechte Pfeiltaste bewegt den Cursor um ein Emoji, nicht um eine Code-Unit", () => {
+    const s: TextAreaEditState = { lines: [`${EMOJI}x`], row: 0, col: 0 };
+    const { state } = reduceTextArea(s, "", key({ rightArrow: true }));
+    expect(state.col).toBe(1);
+  });
+
+  test("Pfeil hoch mit Emoji in der Zielzeile begrenzt die Spalte in Code-Points", () => {
+    const s: TextAreaEditState = { lines: [EMOJI, "Hallo"], row: 1, col: 5 };
+    const { state } = reduceTextArea(s, "", key({ upArrow: true }));
+    expect(state).toEqual({ lines: [EMOJI, "Hallo"], row: 0, col: 1 });
+  });
+});

@@ -35,10 +35,24 @@ export function initTextAreaState(initialValue: string): TextAreaEditState {
 
 export type TextAreaAction = "none" | "open-confirm";
 
+// Zeilenlaenge/Cursor als Code-Points, nicht als UTF-16-Code-Units --
+// gleicher Grund wie in line-input.tsx (siehe Kommentar dort, Review von
+// #50): ein Emoji ausserhalb der Basic Multilingual Plane besteht aus zwei
+// Code-Units, aber einem Code-Point. Ein Cursor in Code-Units koennte
+// mitten in ein Surrogatpaar zeigen.
+function codePointLength(line: string): number {
+  return [...line].length;
+}
+
 // Reine Editier-Logik (Zeilen/Cursor) ohne State-Zugriff aus einem Closure --
 // separat testbar ohne Renderer (siehe tests/text-area.test.ts). Der
 // Speichern-Dialog selbst gehoert NICHT hierher (siehe Datei-Kommentar oben);
 // Esc gibt nur 'open-confirm' zurueck, den Wechsel macht die Komponente.
+//
+// Rechnet Zeileninhalte durchgehend ueber ein Code-Point-Array ('chars'),
+// nicht ueber UTF-16-Indizes des Strings direkt. Deckt Emoji als einzelnen
+// Code-Point ab, nicht Grapheme-Cluster (siehe line-input.tsx-Kommentar zum
+// selben Fix -- dort ausfuehrlich begruendet, gilt hier identisch).
 export function reduceTextArea(
   state: TextAreaEditState,
   input: string,
@@ -47,10 +61,11 @@ export function reduceTextArea(
   if (key.escape) return { state, action: "open-confirm" };
 
   const { lines, row, col } = state;
+  const chars = [...lines[row]!];
 
   if (key.return) {
-    const before = lines[row]!.slice(0, col);
-    const after = lines[row]!.slice(col);
+    const before = chars.slice(0, col).join("");
+    const after = chars.slice(col).join("");
     const next = [...lines];
     next[row] = before;
     next.splice(row + 1, 0, after);
@@ -59,13 +74,15 @@ export function reduceTextArea(
 
   if (key.backspace || key.delete) {
     if (col > 0) {
+      const rowChars = [...chars];
+      rowChars.splice(col - 1, 1);
       const next = [...lines];
-      next[row] = next[row]!.slice(0, col - 1) + next[row]!.slice(col);
+      next[row] = rowChars.join("");
       return { state: { lines: next, row, col: col - 1 }, action: "none" };
     }
     if (row > 0) {
       const next = [...lines];
-      const prevLen = next[row - 1]!.length;
+      const prevLen = codePointLength(next[row - 1]!);
       next[row - 1] += next[row]!;
       next.splice(row, 1);
       return { state: { lines: next, row: row - 1, col: prevLen }, action: "none" };
@@ -75,33 +92,38 @@ export function reduceTextArea(
 
   if (key.upArrow) {
     if (row === 0) return { state, action: "none" };
-    return { state: { lines, row: row - 1, col: Math.min(col, lines[row - 1]!.length) }, action: "none" };
+    return { state: { lines, row: row - 1, col: Math.min(col, codePointLength(lines[row - 1]!)) }, action: "none" };
   }
   if (key.downArrow) {
     if (row >= lines.length - 1) return { state, action: "none" };
-    return { state: { lines, row: row + 1, col: Math.min(col, lines[row + 1]!.length) }, action: "none" };
+    return { state: { lines, row: row + 1, col: Math.min(col, codePointLength(lines[row + 1]!)) }, action: "none" };
   }
   if (key.leftArrow) {
     if (col > 0) return { state: { lines, row, col: col - 1 }, action: "none" };
-    if (row > 0) return { state: { lines, row: row - 1, col: lines[row - 1]!.length }, action: "none" };
+    if (row > 0) return { state: { lines, row: row - 1, col: codePointLength(lines[row - 1]!) }, action: "none" };
     return { state, action: "none" };
   }
   if (key.rightArrow) {
-    if (col < lines[row]!.length) return { state: { lines, row, col: col + 1 }, action: "none" };
+    if (col < chars.length) return { state: { lines, row, col: col + 1 }, action: "none" };
     if (row < lines.length - 1) return { state: { lines, row: row + 1, col: 0 }, action: "none" };
     return { state, action: "none" };
   }
 
   if (key.tab) {
+    const rowChars = [...chars];
+    rowChars.splice(col, 0, " ", " ");
     const next = [...lines];
-    next[row] = next[row]!.slice(0, col) + "  " + next[row]!.slice(col);
+    next[row] = rowChars.join("");
     return { state: { lines: next, row, col: col + 2 }, action: "none" };
   }
 
   if (input && !key.ctrl && !key.meta) {
+    const rowChars = [...chars];
+    const insertChars = [...input];
+    rowChars.splice(col, 0, ...insertChars);
     const next = [...lines];
-    next[row] = next[row]!.slice(0, col) + input + next[row]!.slice(col);
-    return { state: { lines: next, row, col: col + input.length }, action: "none" };
+    next[row] = rowChars.join("");
+    return { state: { lines: next, row, col: col + insertChars.length }, action: "none" };
   }
 
   return { state, action: "none" };
@@ -148,20 +170,26 @@ export function TextArea({ initialValue, onSave, onCancel }: TextAreaProps) {
     <Box flexDirection="column" paddingX={1}>
       <Text color={ACCENT.notes} bold>Notizen editieren:</Text>
       <Box flexDirection="column" borderStyle="single" paddingX={1} minHeight={3}>
-        {lines.map((line, i) => (
-          <Box key={i}>
-            <Text color={ACCENT.muted}>{String(i + 1).padStart(2)} </Text>
-            {i === row ? (
-              <Text>
-                {line.slice(0, col)}
-                <Text inverse>{line[col] ?? " "}</Text>
-                {line.slice(col + 1)}
-              </Text>
-            ) : (
-              <Text>{line || " "}</Text>
-            )}
-          </Box>
-        ))}
+        {lines.map((line, i) => {
+          // Code-Points statt UTF-16-Indizes, damit Cursor-Position und
+          // reduceTextArea() (siehe dortiger Kommentar) uebereinstimmen --
+          // sonst zeigt der Cursor bei einem Emoji vor ihm ins Leere.
+          const rowChars = i === row ? [...line] : null;
+          return (
+            <Box key={i}>
+              <Text color={ACCENT.muted}>{String(i + 1).padStart(2)} </Text>
+              {rowChars ? (
+                <Text>
+                  {rowChars.slice(0, col).join("")}
+                  <Text inverse>{rowChars[col] ?? " "}</Text>
+                  {rowChars.slice(col + 1).join("")}
+                </Text>
+              ) : (
+                <Text>{line || " "}</Text>
+              )}
+            </Box>
+          );
+        })}
       </Box>
       {dialog === "confirm-exit" ? (
         <Text color={ACCENT.notes} bold>
