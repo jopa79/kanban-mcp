@@ -355,7 +355,11 @@ export function App({ workingDir: initialWorkingDir }: AppProps) {
   };
 
   return (
-    <Box flexDirection="column" width="100%" height={termRows}>
+    // termRows - 1: bleibt die Ausgabe unter stdout.rows, faellt Ink nicht in
+    // seinen Vollbild-Pfad (ink.js: lastOutputHeight >= stdout.rows) und
+    // schreibt keinen ESC[2J ESC[3J bei jedem Frame -- siehe Plan
+    // .claude/plans/tui-input-flicker.md, Schritt 1.
+    <Box flexDirection="column" width="100%" height={termRows - 1}>
       {/* Header — fixiert */}
       <Box justifyContent="center" paddingY={0} flexShrink={0}>
         <Text bold color="#3b82f6"> KANBAN </Text>
