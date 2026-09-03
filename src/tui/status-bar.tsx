@@ -122,11 +122,14 @@ interface StatusBarProps {
   message: string;
 }
 
+// #51 (Taste "g"): "a=Arch.  A=Archiv" zu "a/A=Archiv" und "E=Export  I=Import"
+// zu "E/I=Export/Import" gekuerzt, damit "g=Suche" dazukommt, ohne dass die
+// Zeile laenger wird als vorher (126 Zeichen, unveraendert).
 export function StatusBar({ message }: StatusBarProps) {
   return (
     <Box paddingX={1} justifyContent="space-between">
       <Text color={ACCENT.muted}>
-        ?=Hilfe  n=Neu  Space=Verschieben  /=Filter  t=Todo  d=Done  s=Sortieren  x=Del  a=Arch.  A=Archiv  E=Export  I=Import  q=Quit
+        ?=Hilfe  n=Neu  Space=Verschieben  /=Filter  g=Suche  t=Todo  d=Done  s=Sortieren  x=Del  a/A=Archiv  E/I=Export/Import  q=Quit
       </Text>
       {message && <Text color="#22c55e">{message}</Text>}
     </Box>

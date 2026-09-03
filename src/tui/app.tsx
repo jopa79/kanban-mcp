@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useApp, useStdout } from "ink";
 import { boardExists } from "../core/db.ts";
-import { NotesService } from "../core/notes-service.ts";
 import { exportBoard } from "../core/export-service.ts";
 import { BoardView } from "./board-view.tsx";
 import { DetailView } from "./detail-view.tsx";
@@ -14,9 +13,12 @@ import { PriorityPicker } from "./priority-picker.tsx";
 import { ArchiveView } from "./archive-view.tsx";
 import { DependencyView } from "./dependency-view.tsx";
 import { BoardPicker } from "./board-picker.tsx";
+import { SearchView } from "./search-view.tsx";
+import { locateTask } from "./search-query.ts";
 import { useBoard, isOrphanTask, resolveEffectiveSort } from "./use-board.ts";
 import { useInputModes, type Mode, type PendingOverride } from "./use-input-modes.ts";
-import { getColumnColor, getPriorityLabel, ACCENT } from "./theme.ts";
+import { useDetailHandlers } from "./use-detail-handlers.ts";
+import { getColumnColor, ACCENT } from "./theme.ts";
 import { ORPHAN_COLUMN_ID } from "../core/types.ts";
 
 interface AppProps {
@@ -128,87 +130,18 @@ export function App({ workingDir: initialWorkingDir }: AppProps) {
     );
   }
 
-  const handleNoteSave = (val: string) => {
-    if (detailTask) {
-      const notesService = new NotesService(board.kanbanDir);
-      notesService.save(detailTask.id, val.trim());
-      board.refresh();
-      const refreshed = board.getTask(detailTask.id);
-      if (refreshed) setDetailTask(refreshed);
-      setStatusMsg("Notizen gespeichert");
-    }
-    setMode("detail");
-  };
-
-  const handleNoteCancel = () => {
-    setMode("detail");
-    setStatusMsg("");
-  };
-
-  const handleTagsSave = (tags: string[]) => {
-    if (detailTask) {
-      board.updateTask(detailTask.id, { labels: tags });
-      const refreshed = board.getTask(detailTask.id);
-      if (refreshed) setDetailTask(refreshed);
-      setStatusMsg(`Tags: ${tags.length > 0 ? tags.join(", ") : "keine"}`);
-    }
-    setMode("detail");
-  };
-
-  const handleTagsCancel = () => {
-    setMode("detail");
-    setStatusMsg("");
-  };
-
-  const handlePrioritySave = (priority: import("../core/types.ts").TaskPriority | null) => {
-    if (detailTask) {
-      board.updateTask(detailTask.id, { priority });
-      const refreshed = board.getTask(detailTask.id);
-      if (refreshed) setDetailTask(refreshed);
-      setStatusMsg(`Prioritaet: ${getPriorityLabel(priority)}`);
-    }
-    setMode("detail");
-  };
-
-  const handlePriorityCancel = () => {
-    setMode("detail");
-    setStatusMsg("");
-  };
-
-  const handleTitleSave = (val: string) => {
-    if (detailTask && val.trim()) {
-      board.updateTask(detailTask.id, { title: val.trim() });
-      const refreshed = board.getTask(detailTask.id);
-      if (refreshed) setDetailTask(refreshed);
-      setStatusMsg("Titel aktualisiert");
-    }
-    setMode("detail");
-  };
-
-  const handleDescSave = (val: string) => {
-    if (detailTask) {
-      board.updateTask(detailTask.id, { description: val.trim() || null });
-      const refreshed = board.getTask(detailTask.id);
-      if (refreshed) setDetailTask(refreshed);
-      setStatusMsg("Beschreibung aktualisiert");
-    }
-    setMode("detail");
-  };
-
-  // Esc-Abbruch fuer Titel/Beschreibung: die Statuszeile versprach schon
-  // vorher "(Esc=Abbrechen)", aber ink-text-input kannte kein Esc -- das war
-  // tot (siehe #50, Plan Schritt 2). LineInput bringt Esc jetzt tatsaechlich
-  // zum Wirken, deshalb hier nachgezogen, analog zu handleNoteCancel/
-  // handleTagsCancel.
-  const handleTitleCancel = () => {
-    setMode("detail");
-    setStatusMsg("");
-  };
-
-  const handleDescCancel = () => {
-    setMode("detail");
-    setStatusMsg("");
-  };
+  // Save/Cancel-Handler der Detailansicht (Notizen, Tags, Prioritaet, Titel,
+  // Beschreibung) leben in use-detail-handlers.ts -- ausgelagert, weil
+  // app.tsx sonst die 420-Zeilen-Stoppgrenze aus den Task-Notes gerissen
+  // haette (siehe Kommentar dort und Bericht an team-lead). Reine
+  // Verhaltens-Verschiebung, State bleibt hier.
+  const {
+    handleNoteSave, handleNoteCancel,
+    handleTagsSave, handleTagsCancel,
+    handlePrioritySave, handlePriorityCancel,
+    handleTitleSave, handleTitleCancel,
+    handleDescSave, handleDescCancel,
+  } = useDetailHandlers({ board, detailTask, setMode, setStatusMsg, setDetailTask });
 
   const handleAddCancel = () => {
     setMode("board");
@@ -249,6 +182,28 @@ export function App({ workingDir: initialWorkingDir }: AppProps) {
   };
 
   const handleBoardCancel = () => {
+    setMode("board");
+    setStatusMsg("");
+  };
+
+  // Sprung-Suchmodus (#51, Taste "g"): 'locateTask' rechnet gegen den
+  // AKTUELLEN 'board.tasks', nicht gegen den Stand, den SearchView beim
+  // Mount bekam (Plan Abschnitt 2.4) -- der Filter wird aufgehoben, damit der
+  // Treffer sichtbar ist und eine Zeile hat (Entscheidung JoPa, Abschnitt 8).
+  const handleSearchSelect = (task: import("../core/types.ts").Task) => {
+    const loc = locateTask(task.id, board.tasks, board.displayColumns, board.columns);
+    setFilterText("");
+    if (loc) {
+      setSelectedCol(loc.col);
+      setSelectedRow(loc.row);
+      setStatusMsg(`Sprung: "${task.title}"`);
+    } else {
+      setStatusMsg("Task nicht mehr auf dem Board");
+    }
+    setMode("board");
+  };
+
+  const handleSearchCancel = () => {
     setMode("board");
     setStatusMsg("");
   };
@@ -342,6 +297,16 @@ export function App({ workingDir: initialWorkingDir }: AppProps) {
   if (mode === "help") return <HelpView />;
   if (mode === "board-picker") return (
     <BoardPicker currentPath={workingDir} onSelect={handleBoardSelect} onCancel={handleBoardCancel} />
+  );
+  if (mode === "search") return (
+    <SearchView
+      tasks={board.tasks}
+      displayColumns={board.displayColumns}
+      columns={board.columns}
+      kanbanDir={board.kanbanDir}
+      onSelect={handleSearchSelect}
+      onCancel={handleSearchCancel}
+    />
   );
 
   const handleExportSubmit = async (val: string) => {

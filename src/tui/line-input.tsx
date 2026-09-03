@@ -130,6 +130,15 @@ export function LineInput({ initialValue = "", onSubmit, onCancel }: LineInputPr
     else if (action === "cancel") onCancel?.();
   });
 
+  return <LineInputDisplay state={state} />;
+}
+
+// Reine Darstellungs-Komponente, herausgeloest aus 'LineInput' (Plan
+// tui-search-jump, T2) -- der geplante Sprung-Suchmodus (T3) braucht
+// dieselbe Cursor-Darstellung fuer sein eigenes Eingabefeld, kann aber
+// 'LineInput' nicht direkt einbetten (eigene 'useInput'-Registrierung
+// wuerde mit der von 'LineInput' kollidieren).
+export function LineInputDisplay({ state }: { state: LineInputState }) {
   const chars = [...state.value];
   const { cursor } = state;
 

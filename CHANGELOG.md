@@ -23,8 +23,40 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   waechst. Neu sind `TransitionService.count()` und `transitionCount` in
   `getStatus()`; das Feld erscheint additiv auch in `kanban status --json` und
   im MCP-Tool `kanban_status`.
+- **Sprung-Suchmodus in der TUI, Taste `g`** (GitHub #51, T3,
+  [Plan](.claude/plans/tui-search-jump.md)). `g` oeffnet eine Vollbild-Suche
+  ueber Titel, Beschreibung, Notizen und Task-ID; die Trefferliste
+  aktualisiert sich bei jeder Taste, `faellig:JJJJ-MM[-TT]` filtert zusaetzlich
+  nach Faelligkeitsdatum. Enter setzt den Board-Cursor auf den Treffer (hebt
+  einen aktiven Titel-Filter auf) und oeffnet NICHT automatisch die
+  Detailansicht, Esc bricht ab. Neu: `src/tui/search-view.tsx`
+  (`SearchResultList`/`SearchView`, Suchindex per Lazy-Init aus T1/T2). `?`
+  zeigt den neuen Eintrag, die Statuszeile nennt `g=Suche`.
+- **Mount-Regressionstests fuer den Sprung-Suchmodus** (#51, T4). Neu:
+  `tests/tui-search.test.ts` — Fake-TTY-Mounts der echten `<App>` (Muster:
+  `tests/tui-input-drop.test.ts`/`tests/tui-render.test.ts`) fuer Oeffnen/
+  Tippen/Notiz-Treffer/Datumsfilter/Enter/Esc/Kein-Treffer sowie einen
+  Flacker-Schutz-Test mit voller Trefferliste (`rows: 24`, `ESC[2J` bleibt
+  aus, Blocker A aus dem Review) und eine Regressionsabsicherung, dass der
+  globale Board-Handler im Suchmodus nicht mitlaeuft.
 
 ### Changed
+
+- **`LineInputDisplay` aus `LineInput` herausgeloest, `calcScrollWindow` aus
+  `board-view.tsx` exportiert.** Vorarbeit fuer den geplanten Sprung-
+  Suchmodus (#51, T2): dessen Trefferliste braucht dieselbe Cursor-
+  Darstellung und Scroll-Fenster-Logik, ohne `LineInput` als Komponente
+  einzubetten (eigene `useInput`-Registrierung wuerde kollidieren). Reine
+  Verschiebung/Export ohne Verhaltensaenderung.
+
+- **`src/tui/search-query.ts` (neu): reine Query-Parser- und Suchfunktionen
+  fuer den geplanten Sprung-Suchmodus (#51, T1).** `parseSearchQuery`,
+  `buildSearchIndex`, `matchesQuery`, `searchTasks`, `locateTask` -- kein
+  React, noch nicht an die TUI angeschlossen (folgt in T3). Der
+  Datumsfilter `faellig:`/`fällig:` kennt vier Zustaende
+  (`none`/`pending`/`prefix`/`invalid`) statt einer Laengenschwelle, damit
+  die Fehlermeldung beim Tippen von z.B. `2026-09-03` nicht zwischendurch
+  blinkt -- Regressionstest ueber alle elf Zwischenzustaende.
 
 - **Die Verzeichnis-Beobachtung liegt jetzt in `src/tui/watch-board.ts`.**
   `use-board.ts` trug DB-Zugriff, Beobachtung und den React-Hook in einer Datei
@@ -33,6 +65,14 @@ Versionierung folgt [Semantic Versioning](https://semver.org/lang/de/).
   davon — reine Dateisystem-Beobachtung ohne Hook und State — und hatte bereits
   eine eigene Testdatei. Reine Verschiebung ohne Verhaltensaenderung;
   `use-board.ts` liegt danach bei 285 Zeilen.
+
+- **Die Detail-Handler der TUI liegen jetzt in `src/tui/use-detail-handlers.ts`.**
+  `app.tsx` lag bei 432 Zeilen, ueber der 420-Zeilen-Stoppgrenze aus den
+  Task-Notes. Die Save/Cancel-Handler der Detailansicht (Notizen, Tags,
+  Prioritaet, Titel, Beschreibung) sind der abgrenzbare Block — analog zum
+  bereits bestehenden Schnitt `use-input-modes.ts`. Reine Verschiebung ohne
+  Verhaltensaenderung, State bleibt in `app.tsx`; die Datei liegt danach bei
+  363 Zeilen.
 
 - **Reservierte Spalten-IDs werden abgelehnt.** `config.json` darf die ID der
   virtuellen Waisen-Sammelspalte (`__orphan__`) nicht fuer eine echte Spalte

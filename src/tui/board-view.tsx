@@ -23,7 +23,9 @@ interface BoardViewProps {
 }
 
 // Sichtbares Fenster berechnen: haelt selectedRow im Viewport
-function calcScrollWindow(totalItems: number, selectedIdx: number, maxVisible: number) {
+// Exportiert (Plan tui-search-jump, T2) -- die geplante Suchansicht (T3)
+// braucht dieselbe Scroll-Fenster-Logik fuer ihre Trefferliste.
+export function calcScrollWindow(totalItems: number, selectedIdx: number, maxVisible: number) {
   if (totalItems <= maxVisible) return { scrollTop: 0, visibleCount: totalItems };
   // Ausgewaehlten Task moeglichst mittig halten
   let scrollTop = Math.max(0, selectedIdx - Math.floor(maxVisible / 2));

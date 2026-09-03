@@ -19,7 +19,8 @@ export type Mode =
   | "board" | "detail" | "add" | "filter" | "confirm-delete" | "help"
   | "edit-notes" | "edit-tags" | "edit-title" | "edit-description"
   | "archive" | "edit-deps" | "export-path" | "import-path"
-  | "import-confirm" | "confirm-override" | "edit-priority" | "board-picker";
+  | "import-confirm" | "confirm-override" | "edit-priority" | "board-picker"
+  | "search";
 
 // Ausstehender Override: Ablehnungsgrund (voller Text aus TransitionService,
 // ADR 0002) + die Aktion, die bei 'y' mit override:true wiederholt wird.
@@ -127,12 +128,13 @@ export function useInputModes(args: UseInputModesArgs): void {
 
     // Texteingabe- und Vollbild-Ersatz-Modi: kein Key-Handling hier, die
     // jeweilige Komponente hat ihr eigenes vollstaendiges useInput() (siehe
-    // ArchiveView/BoardPicker). Fehlten "archive"/"board-picker" hier
-    // (gefunden im Review von #50), lief dieser Handler TROTZDEM mit --
+    // ArchiveView/BoardPicker/SearchView). Fehlten "archive"/"board-picker"
+    // hier (gefunden im Review von #50), lief dieser Handler TROTZDEM mit --
     // 'q' im Archiv beendete dadurch die ganze TUI statt zu onBack() zu
     // springen, und Pfeiltasten verschoben zusaetzlich den Board-Cursor im
-    // Hintergrund.
-    if (mode === "add" || mode === "filter" || mode === "edit-notes" || mode === "edit-tags" || mode === "edit-title" || mode === "edit-description" || mode === "edit-deps" || mode === "export-path" || mode === "import-path" || mode === "edit-priority" || mode === "archive" || mode === "board-picker") return;
+    // Hintergrund. "search" (#51, T3) MUSS aus demselben Grund hier stehen --
+    // SearchView hat ein eigenes vollstaendiges useInput().
+    if (mode === "add" || mode === "filter" || mode === "edit-notes" || mode === "edit-tags" || mode === "edit-title" || mode === "edit-description" || mode === "edit-deps" || mode === "export-path" || mode === "import-path" || mode === "edit-priority" || mode === "archive" || mode === "board-picker" || mode === "search") return;
 
     if (mode === "detail") {
       if (input === "q" || key.escape) { setMode("board"); setDetailTask(null); setStatusMsg(""); }
@@ -235,6 +237,10 @@ export function useInputModes(args: UseInputModesArgs): void {
     if (input === "x" && selectedTask) { setMode("confirm-delete"); }
     if (input === "a" && selectedTask) { board.archiveTask(selectedTask.id); setStatusMsg(`"${selectedTask.title}" archiviert`); setSelectedRow(Math.max(0, selectedRow - 1)); }
     if (input === "/") { setMode("filter"); }
+    // Sprung-Suchmodus (#51, "goto") -- im Verschiebe-Modus unerreichbar,
+    // der Block 'if (moving && selectedTask)' oben kehrt vorher zurueck
+    // (Plan Abschnitt 2.4, gewollt).
+    if (input === "g") { setMode("search"); }
     if (input === "r") { board.refresh(); setStatusMsg("Aktualisiert"); }
     // P2-3: reiner Ansichtsmodus, toggelt nur die Anzeige-Sortierung -- der
     // eigentliche Verzicht auf Sortierung waehrend des Verschiebens passiert
