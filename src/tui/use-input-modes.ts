@@ -125,8 +125,14 @@ export function useInputModes(args: UseInputModesArgs): void {
       return;
     }
 
-    // Texteingabe-Modi: kein Key-Handling hier (Komponenten handeln selbst)
-    if (mode === "add" || mode === "filter" || mode === "edit-notes" || mode === "edit-tags" || mode === "edit-title" || mode === "edit-description" || mode === "edit-deps" || mode === "export-path" || mode === "import-path" || mode === "edit-priority") return;
+    // Texteingabe- und Vollbild-Ersatz-Modi: kein Key-Handling hier, die
+    // jeweilige Komponente hat ihr eigenes vollstaendiges useInput() (siehe
+    // ArchiveView/BoardPicker). Fehlten "archive"/"board-picker" hier
+    // (gefunden im Review von #50), lief dieser Handler TROTZDEM mit --
+    // 'q' im Archiv beendete dadurch die ganze TUI statt zu onBack() zu
+    // springen, und Pfeiltasten verschoben zusaetzlich den Board-Cursor im
+    // Hintergrund.
+    if (mode === "add" || mode === "filter" || mode === "edit-notes" || mode === "edit-tags" || mode === "edit-title" || mode === "edit-description" || mode === "edit-deps" || mode === "export-path" || mode === "import-path" || mode === "edit-priority" || mode === "archive" || mode === "board-picker") return;
 
     if (mode === "detail") {
       if (input === "q" || key.escape) { setMode("board"); setDetailTask(null); setStatusMsg(""); }

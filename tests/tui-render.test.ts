@@ -29,9 +29,11 @@ class FakeStdin extends Readable {
 
 class FakeStdout extends Writable {
   isTTY = true;
-  rows = 45;
   columns = 220;
   chunks: string[] = [];
+  constructor(public rows = 45) {
+    super();
+  }
   override _write(chunk: Buffer, _enc: string, cb: () => void) {
     this.chunks.push(chunk.toString());
     cb();
@@ -85,7 +87,7 @@ test("kein Terminal-Clear bei mehr Tasks als sichtbar (Overflow-Fall)", async ()
     ctx.taskService.addTask({ title: `Task ${i}` });
   }
   const stdin = new FakeStdin();
-  const stdout = new FakeStdout();
+  const stdout = new FakeStdout(45);
 
   const instance = render(React.createElement(App, { workingDir: ctx.dir }), {
     stdin: stdin as any,
@@ -103,6 +105,47 @@ test("kein Terminal-Clear bei mehr Tasks als sichtbar (Overflow-Fall)", async ()
   await sleep(100);
   stdin.push("X");
   await sleep(100);
+  stdin.push("\x1b");
+  await sleep(100);
+
+  instance.unmount();
+
+  const clears = stdout.chunks.filter((c) => c.includes("\x1b[2J"));
+  expect(clears).toEqual([]);
+});
+
+// Vom Plan gefordert (.claude/plans/tui-input-flicker.md Schritt 1), aber im
+// urspruenglichen Test fehlend (gefunden im Review von #50): ein kleines
+// Terminal, bei dem die Kartenliste den verfuegbaren Platz garantiert
+// ueberschreitet -- genau der Fall, in dem LAYOUT_OVERHEAD zu knapp
+// bemessen sein koennte und Ink wieder in den Vollbild-Pfad faellt.
+test("kein Terminal-Clear bei kleinem Terminal (rows: 20) mit Ueberlauf", async () => {
+  ctx = createTestBoard();
+  for (let i = 0; i < 30; i++) {
+    ctx.taskService.addTask({ title: `Task ${i}` });
+  }
+  const stdin = new FakeStdin();
+  const stdout = new FakeStdout(20);
+
+  const instance = render(React.createElement(App, { workingDir: ctx.dir }), {
+    stdin: stdin as any,
+    stdout: stdout as any,
+    stderr: stdout as any,
+    exitOnCtrlC: false,
+    patchConsole: false,
+    incrementalRendering: true,
+  });
+
+  await sleep(300);
+  stdout.chunks = [];
+
+  stdin.push("n");
+  await sleep(100);
+  for (const ch of "Hallo") {
+    stdin.push(ch);
+    await sleep(10);
+  }
+  await sleep(150);
   stdin.push("\x1b");
   await sleep(100);
 
