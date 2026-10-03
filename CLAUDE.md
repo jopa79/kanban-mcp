@@ -123,3 +123,9 @@ The five canonical roles, unchanged: `needs-triage`, `needs-info`, `ready-for-ag
 ### Domain docs
 
 Single-context: `CONTEXT.md` plus `docs/decisions/` at the repo root — note `docs/decisions/`, not the upstream default `docs/adr/`. See `docs/agents/domain.md`.
+
+## Task-Quelle
+
+kanban
+
+<!-- DevPulse liest diese Angabe (ADR-0017 in jopa79/dev-pulse). Auf `github` erst umstellen, wenn die offenen Kanban-Tasks gesichtet sind. -->
