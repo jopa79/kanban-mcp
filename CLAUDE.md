@@ -126,6 +126,6 @@ Single-context: `CONTEXT.md` plus `docs/decisions/` at the repo root — note `d
 
 ## Task-Quelle
 
-kanban
+github
 
-<!-- DevPulse liest diese Angabe (ADR-0017 in jopa79/dev-pulse). Auf `github` erst umstellen, wenn die offenen Kanban-Tasks gesichtet sind. -->
+<!-- DevPulse liest diese Angabe (ADR-0017 in jopa79/dev-pulse). Umgestellt am 2026-10-04 (Welle T): Arbeit kommt aus den GitHub-Issues, das Board unter `.kanban/` ist archiviert. -->
